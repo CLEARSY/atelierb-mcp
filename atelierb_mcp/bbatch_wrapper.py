@@ -1,0 +1,300 @@
+"""Subprocess wrapper for bbatch CLI communication."""
+
+import asyncio
+import logging
+from dataclasses import dataclass
+from pathlib import Path
+
+from .config import settings
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class BbatchResult:
+    """Result from a bbatch command execution."""
+
+    success: bool
+    output: str
+    error: str | None = None
+    command: str = ""
+
+
+class BbatchWrapper:
+    """Wrapper for communicating with bbatch CLI via subprocess."""
+
+    def __init__(
+        self,
+        bbatch_path: Path | None = None,
+        timeout: float | None = None,
+    ):
+        """Initialize the bbatch wrapper.
+
+        Args:
+            bbatch_path: Path to bbatch executable. Defaults to settings.
+            timeout: Command timeout in seconds. Defaults to settings.
+        """
+        self.bbatch_path = bbatch_path or settings.bbatch_path
+        self.timeout = timeout or settings.command_timeout
+        self._process: asyncio.subprocess.Process | None = None
+
+    async def execute(self, commands: str | list[str]) -> BbatchResult:
+        """Execute one or more bbatch commands.
+
+        Args:
+            commands: Single command string or list of commands.
+
+        Returns:
+            BbatchResult with output and status.
+        """
+        if isinstance(commands, list):
+            command_str = "\n".join(commands)
+        else:
+            command_str = commands
+
+        # Ensure command ends with newline for bbatch to process it
+        if not command_str.endswith("\n"):
+            command_str += "\n"
+
+        logger.debug(f"Executing bbatch commands: {command_str!r}")
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                str(self.bbatch_path),
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(input=command_str.encode("utf-8")),
+                timeout=self.timeout,
+            )
+
+            output = stdout.decode("utf-8", errors="replace")
+            error_output = stderr.decode("utf-8", errors="replace") if stderr else None
+
+            # Check for errors in output
+            success = process.returncode == 0 and "ERROR" not in output.upper()
+
+            return BbatchResult(
+                success=success,
+                output=output,
+                error=error_output if error_output else None,
+                command=command_str,
+            )
+
+        except asyncio.TimeoutError:
+            logger.error(f"bbatch command timed out after {self.timeout}s")
+            return BbatchResult(
+                success=False,
+                output="",
+                error=f"Command timed out after {self.timeout} seconds",
+                command=command_str,
+            )
+        except FileNotFoundError:
+            logger.error(f"bbatch not found at {self.bbatch_path}")
+            return BbatchResult(
+                success=False,
+                output="",
+                error=f"bbatch executable not found at {self.bbatch_path}",
+                command=command_str,
+            )
+        except Exception as e:
+            logger.error(f"bbatch execution error: {e}")
+            return BbatchResult(
+                success=False,
+                output="",
+                error=str(e),
+                command=command_str,
+            )
+
+    async def execute_with_project(
+        self, project_name: str, commands: str | list[str]
+    ) -> BbatchResult:
+        """Execute commands within a project context.
+
+        Args:
+            project_name: Name of the project to open.
+            commands: Commands to execute after opening project.
+
+        Returns:
+            BbatchResult with output and status.
+        """
+        if isinstance(commands, str):
+            commands = [commands]
+
+        full_commands = [f"op {project_name}"] + commands + ["clp"]
+        return await self.execute(full_commands)
+
+    async def list_projects(self) -> BbatchResult:
+        """List all available projects."""
+        return await self.execute("spl")
+
+    async def get_version(self) -> BbatchResult:
+        """Get bbatch version information."""
+        return await self.execute("v")
+
+    async def typecheck(self, project: str, component: str) -> BbatchResult:
+        """Typecheck a component."""
+        return await self.execute_with_project(project, f"t {component}")
+
+    async def b0check(self, project: str, component: str) -> BbatchResult:
+        """B0 check a component (verify B0 compliance for C code generation).
+
+        Args:
+            project: Name of the project.
+            component: Name of the component to check (usually an implementation).
+
+        Returns:
+            BbatchResult with output and status.
+        """
+        return await self.execute_with_project(project, f"b0c {component}")
+
+    async def pogenerate(
+        self, project: str, component: str, differential: bool = False
+    ) -> BbatchResult:
+        """Generate proof obligations for a component."""
+        option = "1" if differential else "0"
+        return await self.execute_with_project(project, f"po {component} {option}")
+
+    async def prove(self, project: str, component: str, force: int = 0) -> BbatchResult:
+        """Run automatic prover on a component.
+
+        Args:
+            project: Project name.
+            component: Component name.
+            force: Proof force level (0-3 auto, 10-13 forced, -1 fast, -2 replay).
+        """
+        return await self.execute_with_project(project, f"pr {component} {force}")
+
+    async def status(self, project: str, component: str) -> BbatchResult:
+        """Get status of a component."""
+        return await self.execute_with_project(project, f"s {component}")
+
+    async def status_global(self, project: str) -> BbatchResult:
+        """Get global status of all components in a project."""
+        return await self.execute_with_project(project, "sg")
+
+    async def list_components(self, project: str) -> BbatchResult:
+        """List all components in a project."""
+        return await self.execute_with_project(project, "sml")
+
+    async def infos_project(self, project: str) -> BbatchResult:
+        """Get information about a project."""
+        return await self.execute(f"ip {project}")
+
+    async def infos_component(self, project: str, component: str) -> BbatchResult:
+        """Get information about a component."""
+        return await self.execute_with_project(project, f"ic {component}")
+
+    async def create_project(
+        self,
+        name: str,
+        bdp_dir: str,
+        lang_dir: str,
+        project_type: str = "SYSTEM",
+    ) -> BbatchResult:
+        """Create a new Atelier B project.
+
+        Args:
+            name: Name of the project.
+            bdp_dir: Path to the project database directory (bdp).
+            lang_dir: Path to the language/source directory (lang).
+            project_type: Project type (SYSTEM, SOFTWARE, or VALIDATION).
+
+        Returns:
+            BbatchResult with output and status.
+        """
+        return await self.execute(f'crp {name} "{bdp_dir}" "{lang_dir}" {project_type}')
+
+    async def add_file(
+        self,
+        project: str,
+        file_path: str,
+        group_component: str | None = None,
+    ) -> BbatchResult:
+        """Add a file to a project.
+
+        Args:
+            project: Name of the project.
+            file_path: Path to the file to add.
+            group_component: Optional component to group with.
+
+        Returns:
+            BbatchResult with output and status.
+        """
+        if group_component:
+            cmd = f'af -g {group_component} "{file_path}"'
+        else:
+            cmd = f'af "{file_path}"'
+        return await self.execute_with_project(project, cmd)
+
+    async def remove_component(self, project: str, component: str) -> BbatchResult:
+        """Remove a component from a project.
+
+        Args:
+            project: Name of the project.
+            component: Name of the component to remove.
+
+        Returns:
+            BbatchResult with output and status.
+        """
+        return await self.execute_with_project(project, f"rc {component}")
+
+    async def remove_project(self, project: str) -> BbatchResult:
+        """Remove a project from Atelier B database.
+
+        Note: This only removes the project from Atelier B's database,
+        it does not delete the project files from disk.
+
+        Args:
+            project: Name of the project to remove.
+
+        Returns:
+            BbatchResult with output and status.
+        """
+        return await self.execute(f"rp {project}")
+
+    async def translate_to_c(
+        self, project: str, component: str, profile: str = "C9X"
+    ) -> BbatchResult:
+        """Translate a component (implementation or basic machine) to C code.
+
+        Args:
+            project: Name of the project.
+            component: Name of the component to translate.
+            profile: C translation profile (C9X, LIGHT, or PROJECT).
+
+        Returns:
+            BbatchResult with output and status.
+        """
+        return await self.execute_with_project(project, f"b2c {component} {profile}")
+
+    async def translate_project_to_c(
+        self,
+        project: str,
+        toplevel: str,
+        profile: str = "C9X",
+        generate_main: bool = False,
+    ) -> BbatchResult:
+        """Translate a complete project to C code.
+
+        Args:
+            project: Name of the project.
+            toplevel: Name of the toplevel component.
+            profile: C translation profile (C9X, LIGHT, or PROJECT).
+            generate_main: If True, generate a main() function.
+
+        Returns:
+            BbatchResult with output and status.
+        """
+        mode = "main" if generate_main else ""
+        cmd = f"p2c {toplevel} {profile}"
+        if mode:
+            cmd += f" {mode}"
+        return await self.execute_with_project(project, cmd)
+
+
+# Global wrapper instance
+bbatch = BbatchWrapper()
