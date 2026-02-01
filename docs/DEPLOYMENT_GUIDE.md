@@ -97,16 +97,16 @@ Before deploying the MCP server, ensure the following software is installed:
          "args": ["C:\\Tools\\atelierb-mcp\\run_server.py"],
          "env": {
            "ATELIERB_PATH": "C:\\Program Files\\Atelier B Community Edition 24.04.2 24.04.2",
-           "ATELIERB_WORKSPACE": "C:\\Work\\B\\MyWorkspace"
+           "ATELIERB_WORKSPACE": "C:\\path\\to\\your\\B\\workspace"
          }
        }
      }
    }
    ```
 
-3. **Important**: Customize the following values:
+3. **Important**: You must adjust `ATELIERB_PATH` and `ATELIERB_WORKSPACE` to match your local configuration:
    - `args`: Update the path to match where you extracted the archive
-   - `ATELIERB_PATH`: Update if Atelier B is installed in a different location
+   - `ATELIERB_PATH`: Set to your Atelier B installation directory
    - `ATELIERB_WORKSPACE`: Set to your B projects workspace directory
 
 ### Step 5: Restart Claude Desktop
@@ -130,7 +130,7 @@ Before deploying the MCP server, ensure the following software is installed:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ATELIERB_PATH` | Path to Atelier B installation | `C:\Program Files\Atelier B Community Edition 24.04.2 24.04.2` |
-| `ATELIERB_WORKSPACE` | Path to B projects workspace | `C:\Work\B\WK25.02` |
+| `ATELIERB_WORKSPACE` | Path to B projects workspace | *(none -- must be set)* |
 | `ATELIERB_BBATCH_CMD` | bbatch executable name | `bbatch.exe` |
 | `ATELIERB_COMMAND_TIMEOUT` | Command timeout in seconds | `120` |
 
@@ -140,7 +140,7 @@ Instead of setting environment variables in `claude_desktop_config.json`, you ca
 
 ```env
 ATELIERB_PATH=C:\Program Files\Atelier B Community Edition 24.04.2 24.04.2
-ATELIERB_WORKSPACE=C:\Work\B\MyWorkspace
+ATELIERB_WORKSPACE=C:\path\to\your\B\workspace
 ```
 
 ---
