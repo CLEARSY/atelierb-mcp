@@ -63,9 +63,11 @@ Environment variables:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ATELIERB_PATH` | Path to Atelier B installation | `C:\Program Files\Atelier B Community Edition 24.04.2 24.04.2` |
-| `ATELIERB_WORKSPACE` | Path to B projects workspace | `C:\Work\B\WK25.02` |
+| `ATELIERB_WORKSPACE` | Path to B projects workspace | *(none -- must be set)* |
 | `ATELIERB_BBATCH_CMD` | bbatch executable name | `bbatch.exe` |
 | `ATELIERB_COMMAND_TIMEOUT` | Command timeout in seconds | `120` |
+
+**Important:** You must set `ATELIERB_PATH` and `ATELIERB_WORKSPACE` to match your local Atelier B installation and B projects directory.
 
 ## Claude Desktop Integration
 
@@ -79,14 +81,14 @@ Add to your Claude Desktop configuration (`%APPDATA%\Claude\claude_desktop_confi
       "args": ["-m", "atelierb_mcp.server"],
       "env": {
         "ATELIERB_PATH": "C:\\Program Files\\Atelier B Community Edition 24.04.2 24.04.2",
-        "ATELIERB_WORKSPACE": "C:\\Work\\B\\MyWorkspace"
+        "ATELIERB_WORKSPACE": "C:\\path\\to\\your\\B\\workspace"
       }
     }
   }
 }
 ```
 
-Restart Claude Desktop after saving the configuration.
+Adjust `ATELIERB_PATH` and `ATELIERB_WORKSPACE` to match your local setup, then restart Claude Desktop.
 
 ## Usage Examples
 
