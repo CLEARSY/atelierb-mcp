@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2026 CLEARSY (https://www.clearsy.com)
+SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+
 # bbatch Commands Reference
 
 This document provides a complete reference of all bbatch CLI commands for Atelier B.

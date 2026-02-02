@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2026 CLEARSY (https://www.clearsy.com)
+SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+
 # Atelier B MCP Server
 
 An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that connects [Claude AI](https://claude.ai) with [Atelier B](https://www.atelierb.eu), the formal methods IDE for the B-method.
@@ -157,4 +162,8 @@ This project was developed using [Claude Code](https://claude.ai/code) (Anthropi
 
 ## License
 
-MIT
+Copyright (C) 2026 [CLEARSY](https://www.clearsy.com)
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+See [LICENSE.md](LICENSE.md) for the full license text.

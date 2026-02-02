@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2026 CLEARSY (https://www.clearsy.com)
+SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+
 # Atelier B MCP Server - Architecture Document
 
 ## Overview
