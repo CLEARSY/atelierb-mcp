@@ -45,7 +45,7 @@ The server wraps Atelier B's `bbatch` command-line interface, translating MCP to
 
 ```bash
 # Clone the repository
-git clone https://github.com/TProver/atelierb-mcp.git
+git clone https://github.com/CLEARSY/atelierb-mcp.git
 cd atelierb-mcp
 
 # Install dependencies
