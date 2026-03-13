@@ -22,6 +22,7 @@ import os
 from pathlib import Path
 
 from ..config import settings
+from ..parsers import reorder_pmi_content, reorder_pmm_content
 
 
 # Allowed file extensions for B method files
@@ -187,6 +188,15 @@ async def atelierb_read_file(
         # Read file content
         content = full_path.read_text(encoding="utf-8", errors="replace")
 
+        # Reorder PMI/PMM files so per-PO entries match bbatch numbering
+        reordered = False
+        if ext == ".pmi":
+            content = reorder_pmi_content(content)
+            reordered = True
+        elif ext == ".pmm":
+            content = reorder_pmm_content(content)
+            reordered = True
+
         return {
             "success": True,
             "path": file_path,
@@ -194,6 +204,7 @@ async def atelierb_read_file(
             "extension": ext,
             "size": len(content),
             "content": content,
+            "reordered": reordered,
         }
 
     except UnicodeDecodeError as e:
