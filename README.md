@@ -24,7 +24,7 @@ bbatch.exe (Atelier B CLI)
 B Projects (bdp/ + lang/ directories)
 ```
 
-The server wraps Atelier B's `bbatch` command-line interface, translating MCP tool calls into bbatch commands and parsing the output back into structured responses.
+The server wraps Atelier B's `bbatch` command-line interface, translating MCP tool calls into bbatch commands and parsing the output back into structured responses. When reading PMI/PMM files, it automatically reorders per-PO entries to match bbatch's numbering convention.
 
 ## Available Tools
 

@@ -84,6 +84,12 @@ Functions that parse bbatch text output into structured data:
 - `parse_components_list()`: Extract machine/refinement/implementation list
 - `parse_global_status()`: Parse the proof status table
 - `parse_status()`: Parse individual component status
+- `reorder_pmi_content()`: Reorder PMI file entries to match bbatch numbering
+- `reorder_pmm_content()`: Reorder PMM file entries to match bbatch numbering
+
+#### PMI/PMM Entry Reordering
+
+In Atelier B, PMI files store per-PO entries (ProofState, MethodList, PassList) in reverse order compared to bbatch's numbering, which follows the BalanceX group order. Similarly, PMM files store User_Pass entries in the same reverse order. When reading these files through `atelierb_read_file`, the server automatically reverses the entries so that entry N corresponds to bbatch PO number N.
 
 ### 5. Tool Modules (`tools/`)
 
@@ -207,8 +213,11 @@ atelierb-mcp/
 4. Read file content
    │  └── UTF-8 encoding with error handling
    │
-5. Return content with metadata
-   └── {"success": true, "content": "MACHINE\n    Airlock\n..."}
+5. Reorder if PMI/PMM file
+   │  └── Reverse per-PO entries to match bbatch numbering
+   │
+6. Return content with metadata
+   └── {"success": true, "content": "...", "reordered": true/false}
 ```
 
 ---
