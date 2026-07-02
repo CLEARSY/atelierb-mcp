@@ -21,7 +21,7 @@ MCP Server (Python)
 bbatch.exe (Atelier B CLI)
     |  filesystem
     v
-B Projects (bdp/ + lang/ directories)
+B Projects (bdp/ + lang/ + src/ directories)
 ```
 
 The server wraps Atelier B's `bbatch` command-line interface, translating MCP tool calls into bbatch commands and parsing the output back into structured responses. When reading PMI/PMM files, it automatically reorders per-PO entries to match bbatch's numbering convention.
@@ -47,13 +47,35 @@ The server wraps Atelier B's `bbatch` command-line interface, translating MCP to
 # Clone the repository
 git clone https://github.com/CLEARSY/atelierb-mcp.git
 cd atelierb-mcp
+```
 
-# Install dependencies
+All remaining commands are run from this **repository root** (the directory that
+contains `pyproject.toml`), not from the inner `atelierb_mcp/` package directory.
+
+### Recommended: install into a virtual environment
+
+On recent Linux distributions (and macOS with Homebrew Python), installing into
+the system interpreter fails with `error: externally-managed-environment`
+([PEP 668](https://peps.python.org/pep-0668/)). Use a virtual environment:
+
+```bash
+python -m venv .venv
+
+# Activate it
+source .venv/bin/activate        # Linux / macOS
+# .venv\Scripts\activate         # Windows (PowerShell / cmd)
+
+# Install dependencies (run from the repository root)
 pip install -e .
 
 # Or install with dev dependencies
 pip install -e ".[dev]"
 ```
+
+Re-activate the environment (`source .venv/bin/activate`) in any new shell before
+running the server. When configuring an MCP client, point `command` at the
+interpreter inside `.venv` (for example `.venv/bin/python`) so it uses the
+installed dependencies.
 
 ## Configuration
 
