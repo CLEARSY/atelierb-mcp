@@ -254,6 +254,7 @@ def parse_project_info(output: str) -> ProjectInfo | None:
 
 def _theory_entries(content: str, name: str) -> list[str]:
     """Return the ';'-separated entries of a THEORY block, in file order."""
+    content = content.replace('\r\n', '\n')
     match = re.search(rf"THEORY\s+{name}\s+IS\s*\n(.+?)\nEND", content, re.DOTALL)
     if not match:
         return []
@@ -280,7 +281,8 @@ def parse_po_labels(po_content: str) -> list[str]:
         theory is absent; entries whose label cannot be read yield an empty
         string so that positions stay aligned.
     """
-    content = po_content.lstrip('﻿')  # some files carry a UTF-8 BOM
+    # Some files carry a UTF-8 BOM, and a Windows checkout yields CRLF.
+    content = po_content.lstrip('﻿').replace('\r\n', '\n')
     match = re.search(r"THEORY\s+ProofList\s+IS\s*\n(.+?)\nEND", content, re.DOTALL)
     if not match:
         return []

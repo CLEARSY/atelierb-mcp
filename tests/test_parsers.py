@@ -273,6 +273,15 @@ class TestPmiPoPairing:
     def test_missing_prooflist_yields_no_labels(self):
         assert parse_po_labels("THEORY Formulas IS\nx;\ny\nEND\n") == []
 
+    def test_crlf_content_is_handled(self):
+        """A Windows checkout hands these files over with CRLF line endings."""
+        pmi = read_fixture("sensor_store_i.pmi").replace("\n", "\r\n")
+        po = read_fixture("sensor_store_i.po").replace("\n", "\r\n")
+        entries = label_pmi_entries(pmi, po)
+        assert entries is not None
+        assert len(entries) == 28
+        assert entries[19]["po"] == "Operation_query.1"
+
     def test_component_without_proof_obligations_pairs_empty(self):
         """A component with no PO has both theories empty; that is aligned, not broken."""
         pmi = (
