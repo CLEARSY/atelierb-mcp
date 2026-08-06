@@ -252,168 +252,88 @@ def parse_project_info(output: str) -> ProjectInfo | None:
     return info if info.name else None
 
 
-def _parse_theories(content: str) -> list[tuple[str, str, str]]:
-    """Parse a PMI/PMM file into a list of (header, body, separator) tuples.
+def _theory_entries(content: str, name: str) -> list[str]:
+    """Return the ';'-separated entries of a THEORY block, in file order."""
+    match = re.search(rf"THEORY\s+{name}\s+IS\s*\n(.+?)\nEND", content, re.DOTALL)
+    if not match:
+        return []
+    return [e.strip() for e in match.group(1).strip().split(';') if e.strip()]
 
-    Each theory block has the form:
-        THEORY Name [IS]
-        entry1;
-        entry2;
-        ...
-        entryN
-        END
 
-    Theories are separated by '&'.
+def parse_po_labels(po_content: str) -> list[str]:
+    """Extract the ordered `Operation.index` labels from a .po file.
+
+    The ProofList theory of a .po file holds one entry per proof obligation, in
+    file order. Each entry ends with an explicit `Operation.index` conjunct just
+    before the comma that introduces the formula, for example::
+
+        _f(1) & _f(2) & _f(10) & Operation_clear.9,(_f(22) & ... => _f(42));
+
+    This label is the only authoritative source for the (operation, index) pair
+    of a proof obligation.
+
+    Args:
+        po_content: Raw text content of the .po file.
 
     Returns:
-        List of (header_line, body_text, trailing_separator) tuples.
-        header_line includes 'THEORY Name IS' or 'THEORY Name'.
-        body_text is everything between the header and END (may be empty).
-        trailing_separator is '&' or '' for the last theory.
+        One label per proof obligation, in file order. Empty if the ProofList
+        theory is absent; entries whose label cannot be read yield an empty
+        string so that positions stay aligned.
     """
-    theories = []
-    # Strip BOM if present
-    content = content.lstrip('\ufeff')
-    # Split on '&' separators between theories
-    # The file format is: THEORY ... END & THEORY ... END & ...
-    # We split on '&' that appears on its own line between END and THEORY
-    blocks = re.split(r'\n&\s*\n', content)
+    content = po_content.lstrip('﻿')  # some files carry a UTF-8 BOM
+    match = re.search(r"THEORY\s+ProofList\s+IS\s*\n(.+?)\nEND", content, re.DOTALL)
+    if not match:
+        return []
 
-    for i, block in enumerate(blocks):
-        block = block.strip()
-        if not block:
+    labels = []
+    for entry in match.group(1).strip().split(';\n'):
+        if not entry.strip():
             continue
+        found = re.search(r"([A-Za-z_]\w*\.\d+)\s*,\s*\(", entry)
+        labels.append(found.group(1) if found else '')
 
-        # Extract header (THEORY line)
-        header_match = re.match(
-            r'(THEORY\s+\S+(?:\s+IS)?)\s*\n(.*?)\nEND\s*$', block, re.DOTALL
-        )
-        if header_match:
-            header = header_match.group(1)
-            body = header_match.group(2).strip()
-            sep = '&' if i < len(blocks) - 1 else ''
-            theories.append((header, body, sep))
-        else:
-            # Theory with no body (e.g., "THEORY EnumerateX\nEND")
-            header_match2 = re.match(r'(THEORY\s+\S+)\s*\n?END\s*$', block, re.DOTALL)
-            if header_match2:
-                header = header_match2.group(1)
-                sep = '&' if i < len(blocks) - 1 else ''
-                theories.append((header, '', sep))
-
-    return theories
+    return labels
 
 
-def _reverse_theory_entries(body: str) -> str:
-    """Reverse the semicolon-separated entries in a theory body.
+def label_pmi_entries(pmi_content: str, po_content: str) -> list[dict] | None:
+    """Pair each entry of a .pmi flat list with its proof obligation label.
 
-    Entries are separated by ';' followed by a newline. The last entry
-    has no trailing semicolon.
-    """
-    if not body.strip():
-        return body
+    The ProofState, MethodList and PassList theories of a .pmi file are flat:
+    one entry per proof obligation, but with nothing saying which (operation,
+    index) an entry belongs to. That information lives in the sibling .po file,
+    whose ProofList entries carry explicit labels and align 1:1 with the flat
+    lists. Entry i of a flat list therefore describes the proof obligation named
+    by label i.
 
-    # Split on ';' followed by newline (preserving entry content)
-    entries = re.split(r';\s*\n', body)
-
-    # The last entry doesn't have a trailing ';', but intermediate ones do
-    # After split, each entry except the last had ';\\n' removed
-    entries = [e.strip() for e in entries if e.strip()]
-
-    if len(entries) <= 1:
-        return body
-
-    # Reverse the entries
-    entries.reverse()
-
-    # Reconstruct with ';' separators
-    return ';\n'.join(entries)
-
-
-def _reconstruct_theories(theories: list[tuple[str, str, str]]) -> str:
-    """Reconstruct a PMI/PMM file from parsed theories."""
-    parts = []
-    for header, body, sep in theories:
-        if body:
-            parts.append(f'{header}\n{body}\nEND')
-        else:
-            parts.append(f'{header}\nEND')
-        if sep:
-            parts.append('&')
-
-    return '\n'.join(parts) + '\n'
-
-
-# Theories in PMI files whose entries need to be reversed to match bbatch ordering.
-# BalanceX and Status contain group summaries (already in bbatch order).
-# ProofState, MethodList, PassList contain per-PO entries in reverse order.
-PMI_THEORIES_TO_REVERSE = {'ProofState', 'MethodList', 'PassList'}
-
-# Theories in PMM files whose entries need to be reversed.
-PMM_THEORIES_TO_REVERSE = {'User_Pass'}
-
-
-def reorder_pmi_content(content: str) -> str:
-    """Reorder PMI file content so per-PO entries match bbatch numbering.
-
-    In PMI files, the BalanceX/Status theories list proof obligation groups
-    in bbatch order (e.g., AssertionLemmas, Operation_algo, WellDefinedness_algo).
-    However, the per-PO theories (ProofState, MethodList, PassList) store entries
-    in REVERSE order. This function reverses those entries so that entry N
-    corresponds to bbatch PO number N.
+    The order is NOT derivable from the .pmi header. It is neither the header
+    order nor its reverse (measured across the 350 .pmi files of a workspace,
+    a reversal rule reproduces the labels in only 75 % of cases), so the .po is
+    the only reliable key.
 
     Args:
-        content: Raw PMI file content.
+        pmi_content: Raw text content of the .pmi file.
+        po_content: Raw text content of the sibling .po file.
 
     Returns:
-        Reordered PMI file content.
+        One dict per proof obligation with its file position, label, status and
+        proof method. Empty for a component that has no proof obligation. None
+        if the two files do not line up, in which case no guess is made.
     """
-    theories = _parse_theories(content)
-    if not theories:
-        return content
+    labels = parse_po_labels(po_content)
+    statuses = _theory_entries(pmi_content, 'ProofState')
+    methods = _theory_entries(pmi_content, 'MethodList')
+    if len(statuses) != len(labels):
+        return None
 
-    reordered = []
-    for header, body, sep in theories:
-        # Extract theory name from header
-        name_match = re.match(r'THEORY\s+(\S+)', header)
-        theory_name = name_match.group(1) if name_match else ''
-
-        if theory_name in PMI_THEORIES_TO_REVERSE and body:
-            body = _reverse_theory_entries(body)
-
-        reordered.append((header, body, sep))
-
-    return _reconstruct_theories(reordered)
-
-
-def reorder_pmm_content(content: str) -> str:
-    """Reorder PMM file content so entries match bbatch numbering.
-
-    In PMM files, the User_Pass theory stores proof method entries in
-    reverse order compared to bbatch's PO numbering. This function
-    reverses those entries.
-
-    Args:
-        content: Raw PMM file content.
-
-    Returns:
-        Reordered PMM file content.
-    """
-    theories = _parse_theories(content)
-    if not theories:
-        return content
-
-    reordered = []
-    for header, body, sep in theories:
-        name_match = re.match(r'THEORY\s+(\S+)', header)
-        theory_name = name_match.group(1) if name_match else ''
-
-        if theory_name in PMM_THEORIES_TO_REVERSE and body:
-            body = _reverse_theory_entries(body)
-
-        reordered.append((header, body, sep))
-
-    return _reconstruct_theories(reordered)
+    return [
+        {
+            'entry': i + 1,
+            'po': labels[i],
+            'status': statuses[i],
+            'method': methods[i] if i < len(methods) else '?',
+        }
+        for i in range(len(labels))
+    ]
 
 
 def extract_error_message(output: str) -> str | None:

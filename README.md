@@ -24,7 +24,7 @@ bbatch.exe (Atelier B CLI)
 B Projects (bdp/ + lang/ + src/ directories)
 ```
 
-The server wraps Atelier B's `bbatch` command-line interface, translating MCP tool calls into bbatch commands and parsing the output back into structured responses. When reading PMI/PMM files, it automatically reorders per-PO entries to match bbatch's numbering convention.
+The server wraps Atelier B's `bbatch` command-line interface, translating MCP tool calls into bbatch commands and parsing the output back into structured responses. Files are returned exactly as they are on disk; when a PMI file is read, its per-PO entries are paired with the labels of the sibling PO file so they can be attributed to the right proof obligation (see [docs/PMI_PMM_ORDERING.md](docs/PMI_PMM_ORDERING.md)).
 
 ## Available Tools
 

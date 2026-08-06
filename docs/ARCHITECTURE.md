@@ -84,12 +84,22 @@ Functions that parse bbatch text output into structured data:
 - `parse_components_list()`: Extract machine/refinement/implementation list
 - `parse_global_status()`: Parse the proof status table
 - `parse_status()`: Parse individual component status
-- `reorder_pmi_content()`: Reorder PMI file entries to match bbatch numbering
-- `reorder_pmm_content()`: Reorder PMM file entries to match bbatch numbering
+- `parse_po_labels()`: Extract the ordered `Operation.index` labels of a PO file
+- `label_pmi_entries()`: Pair each PMI flat entry with its proof obligation label
 
-#### PMI/PMM Entry Reordering
+#### Attributing PMI entries to proof obligations
 
-In Atelier B, PMI files store per-PO entries (ProofState, MethodList, PassList) in reverse order compared to bbatch's numbering, which follows the BalanceX group order. Similarly, PMM files store User_Pass entries in the same reverse order. When reading these files through `atelierb_read_file`, the server automatically reverses the entries so that entry N corresponds to bbatch PO number N.
+A PMI file holds three flat lists with one entry per proof obligation
+(`ProofState`, `MethodList`, `PassList`), but nothing in the file says which
+operation an entry belongs to, and the order cannot be derived from the header.
+The sibling PO file does say: its `ProofList` entries carry an explicit
+`Operation.index` label and align 1:1 with the flat lists, so entry N describes
+the proof obligation named by label N.
+
+`atelierb_read_file` returns PMI and PMM content verbatim and, for a PMI whose
+sibling PO is present, adds a `po_labels` field holding that pairing. Full
+rationale, including why an earlier reversal rule was wrong, in
+[PMI_PMM_ORDERING.md](PMI_PMM_ORDERING.md).
 
 ### 5. Tool Modules (`tools/`)
 
@@ -210,14 +220,14 @@ atelierb-mcp/
 3. Extension check: Is file type allowed?
    │  └── Whitelist: .mch, .ref, .imp, .erf, .po, .pmi, etc.
    │
-4. Read file content
+4. Read file content, verbatim
    │  └── UTF-8 encoding with error handling
    │
-5. Reorder if PMI/PMM file
-   │  └── Reverse per-PO entries to match bbatch numbering
+5. If PMI file: pair its flat entries with the sibling PO labels
+   │  └── label_pmi_entries() - omitted if the PO is missing or does not match
    │
 6. Return content with metadata
-   └── {"success": true, "content": "...", "reordered": true/false}
+   └── {"success": true, "content": "...", "po_labels": [...]}
 ```
 
 ---

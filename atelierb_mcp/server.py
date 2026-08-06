@@ -216,7 +216,13 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="atelierb_read_file",
-            description="Read the content of a B source file (.mch, .ref, .imp, etc.), C code (.c, .h), or Makefile from the workspace",
+            description=(
+                "Read the content of a B source file (.mch, .ref, .imp, etc.), C code (.c, .h), "
+                "or Makefile from the workspace. Content is returned verbatim. For a .pmi file, "
+                "a 'po_labels' list names the proof obligation each entry of its flat theories "
+                "(ProofState, MethodList, PassList) belongs to; those entries carry no operation "
+                "name of their own, so do not try to infer it from their position."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -267,7 +273,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="atelierb_create_project",
-            description="Create a new Atelier B project in the workspace with bdp and lang subdirectories",
+            description="Create a new Atelier B project in the workspace with bdp, lang, and src subdirectories",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -287,7 +293,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="atelierb_add_component",
-            description="Add a new B component (machine, refinement, or implementation) to a project. Creates the file with a template and registers it with Atelier B.",
+            description="Add a new B component (machine, refinement, or implementation) to a project. Creates the file in src/ with a template and registers it with Atelier B.",
             inputSchema={
                 "type": "object",
                 "properties": {

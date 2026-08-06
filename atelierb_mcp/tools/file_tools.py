@@ -22,7 +22,7 @@ import os
 from pathlib import Path
 
 from ..config import settings
-from ..parsers import reorder_pmi_content, reorder_pmm_content
+from ..parsers import label_pmi_entries
 
 
 # Allowed file extensions for B method files
@@ -144,6 +144,14 @@ async def atelierb_read_file(
     """
     Read a B source file from the workspace.
 
+    The content is always returned exactly as it is on disk.
+
+    For a .pmi file whose sibling .po is present, a `po_labels` list is added:
+    it names the proof obligation each entry of the flat theories (ProofState,
+    MethodList, PassList) refers to. Those theories carry no operation name of
+    their own, and their order cannot be derived from the .pmi header, so this
+    is the only sound way to read them.
+
     Args:
         file_path: Relative path from workspace root to the file
 
@@ -185,27 +193,30 @@ async def atelierb_read_file(
                 "error": f"File type not allowed: {full_path.name}. Allowed extensions: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
             }
 
-        # Read file content
+        # Read file content. Every file is returned exactly as it is on disk.
         content = full_path.read_text(encoding="utf-8", errors="replace")
 
-        # Reorder PMI/PMM files so per-PO entries match bbatch numbering
-        reordered = False
-        if ext == ".pmi":
-            content = reorder_pmi_content(content)
-            reordered = True
-        elif ext == ".pmm":
-            content = reorder_pmm_content(content)
-            reordered = True
-
-        return {
+        result = {
             "success": True,
             "path": file_path,
             "full_path": str(full_path),
             "extension": ext,
             "size": len(content),
             "content": content,
-            "reordered": reordered,
         }
+
+        # A .pmi holds flat lists with one entry per proof obligation, but says
+        # nothing about which operation an entry belongs to. The sibling .po
+        # does, so pair the two and hand the labels over alongside the content.
+        if ext == ".pmi":
+            po_path = full_path.with_suffix(".po")
+            if po_path.exists():
+                po_content = po_path.read_text(encoding="utf-8", errors="replace")
+                labels = label_pmi_entries(content, po_content)
+                if labels is not None:
+                    result["po_labels"] = labels
+
+        return result
 
     except UnicodeDecodeError as e:
         return {
