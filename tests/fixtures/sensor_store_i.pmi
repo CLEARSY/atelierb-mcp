@@ -1,0 +1,114 @@
+THEORY BalanceX IS
+sensor_store_i,28,3,0,22,0,0,0;
+Initialisation,4,0,0,4,0,0,0;
+Operation_clear,9,0,0,6,0,0,0;
+Operation_query,1,1,0,0,0,0,0;
+Operation_set_one,4,2,0,2,0,0,0;
+WellDefinednessInvariant,6,0,0,6,0,0,0;
+WellDefinedness_clear,2,0,0,2,0,0,0;
+WellDefinedness_query,2,0,0,2,0,0,0
+END
+&
+THEORY ProofState IS
+Proved(0);
+Proved(0);
+Proved(0);
+Proved(0);
+Proved(0);
+Proved(0);
+Proved(0);
+Proved(0);
+Proved(0);
+Proved(0);
+Unproved;
+Unproved;
+Proved(0);
+Proved(0);
+Unproved;
+Proved(0);
+Proved(0);
+Proved(0);
+Proved(0);
+Proved(Util);
+Proved(Util);
+Proved(Util);
+Proved(0);
+Proved(0);
+Proved(0);
+Proved(0);
+Proved(0);
+Proved(0)
+END
+&
+THEORY MethodList IS
+pr;
+pr;
+pr;
+pr;
+pr;
+pr;
+pr;
+pr;
+pr;
+pr;
+?;
+?;
+pr;
+pr;
+?;
+pr;
+pr;
+pr;
+pr;
+dd & ah(known$1(ss) = TRUE) & eh(dom(reading),(known$1)~[{TRUE}],AllHyp) & dd & pp(rp.1) & dd & pp(rp.1);
+dd & dc(ss$1 = ss) & pp(rp.1) & dd & ah(ss$1 : dom(known$1)) & mp & eh(dom(known$1),1..6,Goal) & mp & eh(NBSENSOR,6,AllHyp) & mp & dd & ah((known$1<+{ss|->TRUE})(ss$1) = known$1(ss$1)) & ar(SimplifyRelFonXY.9,Goal) & mp & dd & eh((known$1<+{ss|->TRUE})(ss$1),known$1(ss$1),AllHyp) & dd & ah(ss$1 : dom(reading)) & eh(dom(reading),(known$1)~[{TRUE}],Goal) & mp & dd & ah(ss$1 : dom(val$1)) & eh(dom(val$1),1..6,Goal) & mp & eh(NBSENSOR,6,AllHyp) & mp;
+dd & pp(rp.1);
+pr;
+pr;
+pr;
+pr;
+pr;
+pr
+END
+&
+THEORY PassList IS
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),(?; 0; 1; 2; 3);
+Force(0),(?; 0; 1; 2; 3);
+Force(0),?;
+Force(0),?;
+Force(0),(?; 0; 1; 2; 3);
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),(?; 0; 1; 2; 3);
+Force(0),(?; 0; 1; 2; 3);
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),?
+END
+&
+THEORY Status IS
+sensor_store_i,28,3,22,0,0,0;
+Initialisation,4,0,4,0,0,0;
+Operation_clear,9,0,6,0,0,0;
+Operation_query,1,1,0,0,0,0;
+Operation_set_one,4,2,2,0,0,0;
+WellDefinednessInvariant,6,0,6,0,0,0;
+WellDefinedness_clear,2,0,2,0,0,0;
+WellDefinedness_query,2,0,2,0,0,0
+END

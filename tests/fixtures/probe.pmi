@@ -1,0 +1,63 @@
+THEORY BalanceX IS
+probe,13,3,0,7,0,0,0;
+AssertionLemmas,3,0,0,0,0,0,0;
+Initialisation,3,1,0,2,0,0,0;
+Operation_bump,4,1,0,3,0,0,0;
+WellDefinednessAssertions,3,1,0,2,0,0,0
+END
+&
+THEORY ProofState IS
+Proved(Util);
+Proved(0);
+Proved(0);
+Proved(0);
+Proved(0);
+Proved(Util);
+Proved(0);
+Proved(0);
+Proved(0);
+Proved(Util);
+Unproved;
+Unproved;
+Unproved
+END
+&
+THEORY MethodList IS
+ah(303 = 303) & mp & pr;
+pr;
+pr;
+pr;
+pr;
+ah(202 = 202) & mp & pr;
+pr;
+pr;
+pr;
+ah(101 = 101) & mp & pr;
+?;
+?;
+?
+END
+&
+THEORY PassList IS
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),?;
+Force(0),(?; 0);
+Force(0),(?; 0);
+Force(0),(?; 0)
+END
+&
+THEORY Status IS
+probe,13,3,7,0,0,0;
+AssertionLemmas,3,0,0,0,0,0;
+Initialisation,3,1,2,0,0,0;
+Operation_bump,4,1,3,0,0,0;
+WellDefinednessAssertions,3,1,2,0,0,0
+END

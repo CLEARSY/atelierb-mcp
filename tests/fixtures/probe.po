@@ -1,0 +1,42 @@
+THEORY ProofList IS
+_f(1) & _f(2) & _f(4) & _f(5) & WellDefinednessAssertions.3,(_f(18) => _f(21));
+_f(1) & _f(2) & _f(4) & WellDefinednessAssertions.2,(_f(18) => _f(20));
+_f(1) & _f(2) & WellDefinednessAssertions.1,(_f(18) => _f(19));
+_f(1) & _f(2) & _f(11) & _f(12) & _f(13) & Operation_bump.4,(_f(7) => _f(17));
+_f(1) & _f(2) & _f(11) & _f(12) & _f(13) & Operation_bump.3,(_f(7) => _f(16));
+_f(1) & _f(2) & _f(11) & _f(12) & _f(13) & Operation_bump.2,(_f(7) => _f(15));
+_f(1) & _f(2) & _f(11) & _f(12) & _f(13) & Operation_bump.1,(_f(7) => _f(14));
+_f(1) & Initialisation.3,(_f(7) => _f(10));
+_f(1) & Initialisation.2,(_f(7) => _f(9));
+_f(1) & Initialisation.1,(_f(7) => _f(8));
+_f(1) & _f(2) & _f(4) & _f(5) & AssertionLemmas.3,(_f(3) => _f(6));
+_f(1) & _f(2) & _f(4) & AssertionLemmas.2,(_f(3) => _f(5));
+_f(1) & _f(2) & AssertionLemmas.1,(_f(3) => _f(4))
+END
+&
+THEORY Formulas IS
+((NAT) = (((0) .. (2147483647)))) & ((INT) = (((-2147483647) .. (2147483647))));
+((xx) : (NAT)) & ((yy) : (NAT)) & (xx <= 10) & (yy <= 20);
+"Assertion is verified";
+((SIGMA(zz).(((zz) : (({0}\/{1}))) | zz)) = (1));
+((SIGMA(zz).(((zz) : (({0}\/{2}))) | zz)) = (2));
+((SIGMA(zz).(((zz) : (({0}\/{3}))) | zz)) = (3));
+"Invariant is preserved";
+((0) : (NAT));
+(0 <= 10);
+(0 <= 20);
+((SIGMA(zz).(((zz) : (({0}\/{1}))) | zz)) = (1)) & ((SIGMA(zz).(((zz) : (({0}\/{2}))) | zz)) = (2)) & ((SIGMA(zz).(((zz) : (({0}\/{3}))) | zz)) = (3));
+(xx +1 <= 10);
+(yy +1 <= 20);
+(((xx + 1)) : (NAT));
+(((yy + 1)) : (NAT));
+((xx + 1) <= 10);
+((yy + 1) <= 20);
+"Assertion is well defined";
+((SET(zz).(((zz) : (({0}\/{1}))))) : (FIN(SET(zz).(((zz) : (({0}\/{1})))))));
+((SET(zz).(((zz) : (({0}\/{2}))))) : (FIN(SET(zz).(((zz) : (({0}\/{2})))))));
+((SET(zz).(((zz) : (({0}\/{3}))))) : (FIN(SET(zz).(((zz) : (({0}\/{3})))))))
+END
+&
+THEORY EnumerateX
+END

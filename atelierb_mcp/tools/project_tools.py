@@ -151,8 +151,9 @@ async def atelierb_create_project(
     """Create a new Atelier B project in the workspace.
 
     This creates a new project with:
-    - A bdp (project database) subdirectory for metadata
-    - A lang (language/source) subdirectory for B source files
+    - A bdp (project database) subdirectory for Atelier B metadata
+    - A lang (translation) subdirectory for generated code (C, Rust, etc.)
+    - A src subdirectory for B source files (.mch, .ref, .imp, .pmm, .def)
 
     Args:
         project_name: Name of the new project.
@@ -176,6 +177,7 @@ async def atelierb_create_project(
     project_dir = workspace / project_name
     bdp_dir = project_dir / "bdp"
     lang_dir = project_dir / "lang"
+    src_dir = project_dir / "src"
 
     # Check if project directory already exists
     if project_dir.exists():
@@ -188,6 +190,7 @@ async def atelierb_create_project(
         # Create the directories
         bdp_dir.mkdir(parents=True, exist_ok=False)
         lang_dir.mkdir(parents=True, exist_ok=False)
+        src_dir.mkdir(parents=True, exist_ok=False)
     except OSError as e:
         return {
             "success": False,
@@ -195,6 +198,7 @@ async def atelierb_create_project(
         }
 
     # Create the project using bbatch
+    # crp <name> <pdb_dir> <lang_dir>: lang_dir is the translation path (generated code)
     result = await bbatch.create_project(
         project_name,
         str(bdp_dir),
@@ -206,6 +210,8 @@ async def atelierb_create_project(
         error = extract_error_message(result.output) or result.error
         # Try to clean up directories on failure
         try:
+            if src_dir.exists() and not any(src_dir.iterdir()):
+                src_dir.rmdir()
             if lang_dir.exists() and not any(lang_dir.iterdir()):
                 lang_dir.rmdir()
             if bdp_dir.exists() and not any(bdp_dir.iterdir()):
@@ -228,6 +234,7 @@ async def atelierb_create_project(
             "project_dir": str(project_dir),
             "bdp_dir": str(bdp_dir),
             "lang_dir": str(lang_dir),
+            "src_dir": str(src_dir),
         },
         "raw_output": result.output,
     }
@@ -241,8 +248,8 @@ async def atelierb_add_component(
 ) -> dict:
     """Add a new B component (machine, refinement, or implementation) to a project.
 
-    Creates the component file in the project's lang directory and registers it
-    with Atelier B.
+    Creates the component file in the project's src directory and registers it
+    with Atelier B using the af (add_file) command.
 
     Args:
         project_name: Name of the project to add the component to.
@@ -270,7 +277,7 @@ async def atelierb_add_component(
 
     extension, b_keyword = type_map[component_type_lower]
 
-    # Get project info to find the lang directory
+    # Get project info to find the src directory
     info_result = await bbatch.infos_project(project_name)
     if not info_result.success:
         error = extract_error_message(info_result.output) or info_result.error
@@ -280,22 +287,35 @@ async def atelierb_add_component(
         }
 
     project_info = parse_project_info(info_result.output)
-    if not project_info or not project_info.lang_path:
+    if not project_info or not project_info.bdp_path:
         return {
             "success": False,
-            "error": f"Could not determine lang directory for project '{project_name}'",
+            "error": f"Could not determine project paths for '{project_name}'",
         }
 
-    lang_dir = Path(project_info.lang_path)
-    if not lang_dir.exists():
-        return {
-            "success": False,
-            "error": f"Lang directory does not exist: {lang_dir}",
-        }
+    # src/ is a sibling of bdp/ in the project directory
+    project_dir = Path(project_info.bdp_path).parent
+    src_dir = project_dir / "src"
+    if not src_dir.exists():
+        # Fallback: if src/ doesn't exist, try lang/ for backward compatibility
+        if project_info.lang_path:
+            lang_dir = Path(project_info.lang_path)
+            if lang_dir.exists():
+                src_dir = lang_dir
+            else:
+                return {
+                    "success": False,
+                    "error": f"Neither src/ nor lang/ directory exists for project '{project_name}'",
+                }
+        else:
+            return {
+                "success": False,
+                "error": f"Source directory does not exist: {src_dir}",
+            }
 
     # Create the file path
     file_name = f"{component_name}{extension}"
-    file_path = lang_dir / file_name
+    file_path = src_dir / file_name
 
     if file_path.exists():
         return {

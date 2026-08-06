@@ -218,7 +218,7 @@ class BbatchWrapper:
         Args:
             name: Name of the project.
             bdp_dir: Path to the project database directory (bdp).
-            lang_dir: Path to the language/source directory (lang).
+            lang_dir: Path to the translation directory (lang) for generated code.
             project_type: Project type (SYSTEM, SOFTWARE, or VALIDATION).
 
         Returns:

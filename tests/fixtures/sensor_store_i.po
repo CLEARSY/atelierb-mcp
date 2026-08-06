@@ -1,0 +1,92 @@
+THEORY ProofList IS
+_f(1) & _f(2) & _f(10) & _f(11) & WellDefinedness_clear.2,(_f(22) & _f(23) & _f(54) & _f(53) => _f(56));
+_f(1) & _f(2) & _f(10) & _f(11) & WellDefinedness_clear.1,(_f(22) & _f(23) & _f(54) & _f(53) => _f(55));
+_f(1) & _f(2) & _f(10) & _f(11) & _f(3) & _f(19) & WellDefinedness_query.2,(_f(53) => _f(52));
+_f(1) & _f(2) & _f(10) & _f(11) & _f(3) & _f(19) & WellDefinedness_query.1,(_f(53) => _f(51));
+_f(1) & _f(2) & _f(10) & WellDefinednessInvariant.6,(_f(43) & _f(44) & _f(45) & _f(3) & _f(46) & _f(47) => _f(52));
+_f(1) & _f(2) & _f(10) & WellDefinednessInvariant.5,(_f(43) & _f(44) & _f(45) & _f(3) & _f(46) & _f(47) => _f(51));
+_f(1) & _f(2) & _f(10) & WellDefinednessInvariant.4,(_f(43) & _f(44) & _f(45) & _f(3) & _f(46) & _f(47) => _f(50));
+_f(1) & _f(2) & _f(10) & WellDefinednessInvariant.3,(_f(43) & _f(44) & _f(45) & _f(3) & _f(46) & _f(47) => _f(19));
+_f(1) & _f(2) & _f(10) & WellDefinednessInvariant.2,(_f(43) & _f(44) & _f(45) & _f(3) & _f(47) => _f(49));
+_f(1) & _f(2) & _f(10) & WellDefinednessInvariant.1,(_f(43) & _f(44) & _f(45) & _f(3) & _f(47) => _f(48));
+_f(1) & _f(2) & _f(10) & _f(11) & Operation_clear.9,(_f(22) & _f(23) & _f(24) & _f(27) & _f(3) & _f(28) & _f(40) => _f(42));
+_f(1) & _f(2) & _f(10) & _f(11) & Operation_clear.8,(_f(22) & _f(23) & _f(24) & _f(27) & _f(40) => _f(41));
+_f(1) & _f(2) & _f(10) & _f(11) & Operation_clear.7,(_f(22) & _f(23) & _f(24) & _f(25) & _f(38) => _f(39));
+_f(1) & _f(2) & _f(10) & _f(11) & Operation_clear.6,(_f(22) & _f(23) & _f(24) & _f(36) => _f(37));
+_f(1) & _f(2) & _f(10) & _f(11) & Operation_clear.5,(_f(22) & _f(23) & _f(24) & _f(25) & _f(26) & _f(32) => _f(35));
+_f(1) & _f(2) & _f(10) & _f(11) & Operation_clear.4,(_f(22) & _f(23) & _f(24) & _f(25) & _f(32) => _f(34));
+_f(1) & _f(2) & _f(10) & _f(11) & Operation_clear.3,(_f(22) & _f(23) & _f(24) & _f(25) & _f(32) => _f(33));
+_f(1) & _f(2) & _f(10) & _f(11) & Operation_clear.2,(_f(21) & _f(29) => _f(31));
+_f(1) & _f(2) & _f(10) & _f(11) & Operation_clear.1,(_f(29) => _f(30));
+_f(1) & _f(2) & _f(10) & _f(11) & Operation_query.1,(_f(3) & _f(19) & _f(5) => _f(20));
+_f(1) & _f(2) & _f(10) & _f(11) & Operation_set_one.4,(_f(3) & _f(12) & _f(13) & _f(14) & _f(5) => _f(18));
+_f(1) & _f(2) & _f(10) & _f(11) & Operation_set_one.3,(_f(3) & _f(12) & _f(5) => _f(17));
+_f(1) & _f(2) & _f(10) & _f(11) & Operation_set_one.2,(_f(3) & _f(12) & _f(5) => _f(16));
+_f(1) & _f(2) & _f(10) & _f(11) & Operation_set_one.1,(_f(3) & _f(12) & _f(5) => _f(15));
+_f(1) & _f(2) & Initialisation.4,(_f(3) & _f(4) & _f(5) => _f(9));
+_f(1) & _f(2) & Initialisation.3,(_f(5) => _f(8));
+_f(1) & _f(2) & Initialisation.2,(_f(5) => _f(7));
+_f(1) & _f(2) & Initialisation.1,(_f(5) => _f(6))
+END
+&
+THEORY Formulas IS
+((NAT) = (((0) .. (2147483647)))) & ((INT) = (((-2147483647) .. (2147483647))));
+((NBSENSOR) : ((NAT-{0}))) & ((NBSENSOR) = (6)) & ((MAXVAL) : ((NAT-{0}))) & ((MAXVAL) = (1023)) & ((MAXLEN) : ((NAT-{0}))) & ((MAXLEN) = (6));
+((ss) : (((1) .. (NBSENSOR))));
+((((((1) .. (NBSENSOR)) * ({FALSE})) )(ss)) = (TRUE));
+"Refinement is correct";
+(((((1) .. (NBSENSOR)) * ({0}))) : (((((1) .. (NBSENSOR))) --> (((0) .. (MAXVAL))))));
+(((((1) .. (NBSENSOR)) * ({FALSE}))) : (((((1) .. (NBSENSOR))) --> (BOOL))));
+((dom({})) = ((((((1) .. (NBSENSOR)) * ({FALSE})))~ )[({TRUE})]));
+((({} )(ss)) = (((((1) .. (NBSENSOR)) * ({0})) )(ss)));
+((reading) : (((((1) .. (NBSENSOR))) +-> (((0) .. (MAXVAL))))));
+val$1 : ((1) .. (NBSENSOR)) +-> ((0) .. (MAXVAL)) & dom(val$1) = ((1) .. (NBSENSOR)) & ((val$1) : (((((1) .. (NBSENSOR))) --> (((0) .. (MAXVAL)))))) & known$1 : ((1) .. (NBSENSOR)) +-> BOOL & dom(known$1) = ((1) .. (NBSENSOR)) & ((known$1) : (((((1) .. (NBSENSOR))) --> (BOOL)))) & ((dom(reading)) = (((known$1)~ )[({TRUE})])) & !(ss).(((((ss) : (((1) .. (NBSENSOR)))) & (((known$1 )(ss)) = (TRUE))) => ((((reading )(ss)) = ((val$1 )(ss))))));
+((vv) : (((0) .. (MAXVAL))));
+((ss$1) : (((1) .. (NBSENSOR))));
+(((((known$1) <+ (({((ss) |-> (TRUE))}))) )(ss$1)) = (TRUE));
+((((val$1) <+ (({((ss) |-> (vv))})))) : (((((1) .. (NBSENSOR))) --> (((0) .. (MAXVAL))))));
+((((known$1) <+ (({((ss) |-> (TRUE))})))) : (((((1) .. (NBSENSOR))) --> (BOOL))));
+((dom(((reading) <+ (({((ss) |-> (vv))}))))) = (((((known$1) <+ (({((ss) |-> (TRUE))}))))~ )[({TRUE})]));
+(((((reading) <+ (({((ss) |-> (vv))}))) )(ss$1)) = ((((val$1) <+ (({((ss) |-> (vv))}))) )(ss$1)));
+((ss) : (dom(reading)));
+(((val$1 )(ss)) = ((reading )(ss)));
+((ss) : (((1) .. ((1 - 1)))));
+((kk) : (((1) .. ((NBSENSOR + 1)))));
+known : ((1) .. (NBSENSOR)) +-> BOOL & dom(known) = ((1) .. (NBSENSOR)) & ((known) : (((((1) .. (NBSENSOR))) --> (BOOL))));
+!(ss).(((((ss) : (((1) .. ((kk - 1)))))) => ((((known )(ss)) = (FALSE)))));
+(kk <= NBSENSOR);
+((ss) : (((1) .. (((kk + 1) - 1)))));
+not((kk <= NBSENSOR));
+(((known )(ss)) = (TRUE));
+"Loop initialisation";
+((1) : (((1) .. ((NBSENSOR + 1)))));
+(((known$1 )(ss)) = (FALSE));
+"Loop invariant is preserved";
+(((kk + 1)) : (((1) .. ((NBSENSOR + 1)))));
+((((known) <+ (({((kk) |-> (FALSE))})))) : (((((1) .. (NBSENSOR))) --> (BOOL))));
+(((((known) <+ (({((kk) |-> (FALSE))}))) )(ss)) = (FALSE));
+"Loop variant is positive";
+(0 <= ((NBSENSOR - kk) + 1));
+"Variant is decreasing";
+(((NBSENSOR - (kk + 1)) + 1) +1 <= ((NBSENSOR - kk) + 1));
+"End of loop";
+((dom({})) = (((known)~ )[({TRUE})]));
+((({} )(ss)) = ((val$1 )(ss)));
+val$1 : ((1) .. (NBSENSOR)) +-> ((0) .. (MAXVAL)) & dom(val$1) = ((1) .. (NBSENSOR)) & ((val$1) : (((((1) .. (NBSENSOR))) --> (((0) .. (MAXVAL))))));
+known$1 : ((1) .. (NBSENSOR)) +-> BOOL & dom(known$1) = ((1) .. (NBSENSOR)) & ((known$1) : (((((1) .. (NBSENSOR))) --> (BOOL))));
+((dom(reading)) = (((known$1)~ )[({TRUE})]));
+(((known$1 )(ss)) = (TRUE));
+"Invariant is well defined";
+((ss) : (dom(known$1)));
+((known$1) : (((dom(known$1)) +-> (ran(known$1)))));
+((reading) : (((dom(reading)) +-> (ran(reading)))));
+((ss) : (dom(val$1)));
+((val$1) : (((dom(val$1)) +-> (ran(val$1)))));
+"Operation is well defined";
+((ss) : (((1) .. ((kk - 1)))));
+((ss) : (dom(known)));
+((known) : (((dom(known)) +-> (ran(known)))))
+END
+&
+THEORY EnumerateX
+END
