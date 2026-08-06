@@ -55,6 +55,11 @@ dmypy.json
 # Claude Code
 .claude/
 CLAUDE.md
+# Internal working notes (backlog, session history, post-mortems).
+# Same category as CLAUDE.md above: written for the team, not for the public
+# repo. Excluded so that a "git add ." cannot sweep them into a public commit,
+# which forward-only removal would not erase from the history.
+tasks/
 
 # Project-specific exclusions
 chat1.txt
