@@ -23,7 +23,7 @@ import logging
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import TextContent, Tool
+from mcp.types import CallToolResult, ListToolsResult, TextContent, Tool
 
 from .config import settings
 from .tools import (
@@ -51,14 +51,9 @@ from .tools import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Create MCP server
-server = Server("atelierb-mcp")
-
-
-@server.list_tools()
-async def list_tools() -> list[Tool]:
+async def list_tools(ctx, params) -> ListToolsResult:
     """List available tools."""
-    return [
+    return ListToolsResult(tools=[
         Tool(
             name="atelierb_list_projects",
             description="List all available Atelier B projects",
@@ -413,13 +408,17 @@ async def list_tools() -> list[Tool]:
                 "required": ["project_name", "toplevel_component"],
             },
         ),
-    ]
+    ])
 
 
-@server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+async def call_tool(ctx, params) -> CallToolResult:
     """Handle tool calls."""
     import json
+
+    # `arguments` is optional on the wire: tools that take no parameter arrive
+    # with None, where the v1 signature always handed over a dict.
+    name = params.name
+    arguments = params.arguments or {}
 
     try:
         if name == "atelierb_list_projects":
@@ -509,16 +508,27 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         else:
             result = {"success": False, "error": f"Unknown tool: {name}"}
 
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        return CallToolResult(
+            content=[TextContent(type="text", text=json.dumps(result, indent=2))]
+        )
 
     except Exception as e:
         logger.error(f"Error executing tool {name}: {e}")
-        return [
-            TextContent(
-                type="text",
-                text=json.dumps({"success": False, "error": str(e)}),
-            )
-        ]
+        # Reported as a normal result, not a protocol error, so the client sees
+        # the same `success: false` payload the tools themselves return.
+        return CallToolResult(
+            content=[
+                TextContent(
+                    type="text",
+                    text=json.dumps({"success": False, "error": str(e)}),
+                )
+            ]
+        )
+
+
+# Handlers are registered on the constructor: mcp 2.0 dropped the
+# @server.list_tools() / @server.call_tool() decorators.
+server = Server("atelierb-mcp", on_list_tools=list_tools, on_call_tool=call_tool)
 
 
 async def run_server():
