@@ -18,12 +18,78 @@
 
 """Project-level MCP tools for Atelier B."""
 
+import getpass
 import os
 from pathlib import Path
 
 from ..bbatch_wrapper import bbatch
 from ..config import settings
 from ..parsers import extract_error_message, parse_components_list, parse_project_info, parse_projects_list
+
+
+def _desc_path(project_name: str) -> Path:
+    """Path of the workspace descriptor that makes a project visible in the IDE."""
+    return Path(settings.workspace) / f"{project_name}.desc"
+
+
+def _desc_owner() -> str:
+    """Owner field to write in a descriptor.
+
+    Read from a descriptor the IDE already wrote in this workspace, rather than
+    from the current login. The two are not the same thing: on the reference
+    machine the Windows account is `tl` while the profile directory is
+    `C:\\Users\\Thierry Lecomte`, and the account name changed once during a
+    machine migration. Copying the value the workspace already uses keeps new
+    projects consistent with the existing ones whatever the login happens to be.
+
+    Falls back to the login name for an empty workspace, which is the only case
+    where there is nothing to copy.
+    """
+    for existing in sorted(Path(settings.workspace).glob("*.desc")):
+        try:
+            lines = existing.read_bytes().split(b"\r\n")
+        except OSError:
+            continue
+        if len(lines) > 3 and lines[3].strip():
+            return lines[3].decode("ascii", errors="replace")
+
+    try:
+        return getpass.getuser()
+    except Exception:  # noqa: BLE001 - getuser can fail on odd environments
+        return "unknown"
+
+
+def _write_project_desc(project_name: str, bdp_dir: Path, lang_dir: Path) -> Path:
+    """Write the `<project>.desc` file at the root of the workspace.
+
+    The Atelier B IDE builds its project tree from these descriptors, not from the
+    project directories: a project without one is fully usable through bbatch and
+    completely invisible in the IDE. `crp` does not write it, so the server must.
+
+    Six ASCII lines, CRLF-terminated, as measured on the descriptors the IDE itself
+    wrote (identical across 33 projects of the reference workspace)::
+
+        C:\\Work\\B\\WK25.02\\<project>\\bdp
+        C:\\Work\\B\\WK25.02\\<project>\\lang
+        <empty>
+        <owner>
+        <READ>
+        <LIB>
+
+    Written as bytes on purpose: text mode would translate the line endings, and
+    building these paths through a shell turns `\\b` into a backspace.
+    """
+    lines = [
+        str(bdp_dir),
+        str(lang_dir),
+        "",
+        _desc_owner(),
+        "<READ>",
+        "<LIB>",
+    ]
+    path = _desc_path(project_name)
+    path.write_bytes(("\r\n".join(lines) + "\r\n").encode("ascii"))
+    return path
 
 
 async def atelierb_list_projects() -> dict:
@@ -147,6 +213,7 @@ async def atelierb_list_components(project_name: str) -> dict:
 async def atelierb_create_project(
     project_name: str,
     project_type: str = "SYSTEM",
+    register: bool = True,
 ) -> dict:
     """Create a new Atelier B project in the workspace.
 
@@ -154,11 +221,16 @@ async def atelierb_create_project(
     - A bdp (project database) subdirectory for Atelier B metadata
     - A lang (translation) subdirectory for generated code (C, Rust, etc.)
     - A src subdirectory for B source files (.mch, .ref, .imp, .pmm, .def)
+    - A <project>.desc descriptor at the root of the workspace, which is what
+      makes the project appear in the Atelier B IDE
 
     Args:
         project_name: Name of the new project.
         project_type: Type of project (SYSTEM, SOFTWARE, or VALIDATION).
                      Defaults to SYSTEM.
+        register: If True (default), write the workspace descriptor so the project
+                 shows up in the IDE. Set to False only for throwaway projects that
+                 should stay out of the user's project tree.
 
     Returns:
         Dictionary with 'success' status and project information.
@@ -226,7 +298,20 @@ async def atelierb_create_project(
             "raw_output": result.output,
         }
 
-    return {
+    # Make the project visible in the IDE. bbatch is happy without this, the IDE
+    # never shows the project without it.
+    desc_path = None
+    desc_warning = None
+    if register:
+        try:
+            desc_path = str(_write_project_desc(project_name, bdp_dir, lang_dir))
+        except OSError as e:
+            desc_warning = (
+                f"Project created, but the workspace descriptor could not be written: {e}. "
+                f"The project works through bbatch but will not appear in the Atelier B IDE."
+            )
+
+    response = {
         "success": True,
         "project": project_name,
         "type": project_type,
@@ -236,8 +321,14 @@ async def atelierb_create_project(
             "lang_dir": str(lang_dir),
             "src_dir": str(src_dir),
         },
+        "registered": desc_path is not None,
         "raw_output": result.output,
     }
+    if desc_path:
+        response["paths"]["desc_file"] = desc_path
+    if desc_warning:
+        response["warning"] = desc_warning
+    return response
 
 
 async def atelierb_add_component(
@@ -544,6 +635,22 @@ async def atelierb_remove_project(
             "raw_output": result.output,
         }
 
+    # Reciprocal of the descriptor written by create_project. Leaving it behind
+    # would keep the project in the IDE tree after it has been unregistered,
+    # pointing at a database that no longer knows it.
+    desc_removed = False
+    desc_warning = None
+    desc_file = _desc_path(project_name)
+    if desc_file.exists():
+        try:
+            desc_file.unlink()
+            desc_removed = True
+        except OSError as e:
+            desc_warning = (
+                f"Project unregistered but the workspace descriptor {desc_file} could not be "
+                f"removed: {e}. The Atelier B IDE will still list the project."
+            )
+
     deleted_dir = None
     if delete_files and project_dir and project_dir.exists():
         try:
@@ -555,15 +662,20 @@ async def atelierb_remove_project(
                 "project": project_name,
                 "unregistered": True,
                 "files_deleted": False,
+                "descriptor_removed": desc_removed,
                 "warning": f"Project unregistered but failed to delete directory: {e}",
                 "raw_output": result.output,
             }
 
-    return {
+    response = {
         "success": True,
         "project": project_name,
         "unregistered": True,
         "files_deleted": deleted_dir is not None,
         "deleted_directory": deleted_dir,
+        "descriptor_removed": desc_removed,
         "raw_output": result.output,
     }
+    if desc_warning:
+        response["warning"] = desc_warning
+    return response

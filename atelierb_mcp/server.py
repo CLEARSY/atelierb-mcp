@@ -268,7 +268,10 @@ async def list_tools(ctx, params) -> ListToolsResult:
         ),
         Tool(
             name="atelierb_create_project",
-            description="Create a new Atelier B project in the workspace with bdp, lang, and src subdirectories",
+            description=(
+                "Create a new Atelier B project in the workspace with bdp, lang, and src "
+                "subdirectories, and register it so it appears in the Atelier B IDE"
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -281,6 +284,16 @@ async def list_tools(ctx, params) -> ListToolsResult:
                         "description": "Type of project: SYSTEM (default), SOFTWARE, or VALIDATION",
                         "enum": ["SYSTEM", "SOFTWARE", "VALIDATION"],
                         "default": "SYSTEM",
+                    },
+                    "register": {
+                        "type": "boolean",
+                        "description": (
+                            "Write the <project>.desc workspace descriptor so the project shows up "
+                            "in the Atelier B IDE. Default true. Set false only for throwaway "
+                            "projects that should stay out of the user's project tree; such a "
+                            "project still works through bbatch but stays invisible in the IDE."
+                        ),
+                        "default": True,
                     },
                 },
                 "required": ["project_name"],
@@ -473,6 +486,7 @@ async def call_tool(ctx, params) -> CallToolResult:
             result = await atelierb_create_project(
                 arguments["project_name"],
                 arguments.get("project_type", "SYSTEM"),
+                arguments.get("register", True),
             )
         elif name == "atelierb_add_component":
             result = await atelierb_add_component(
