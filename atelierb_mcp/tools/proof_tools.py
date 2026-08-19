@@ -64,6 +64,10 @@ def _status_payload(status) -> dict:
         "unproved_po": status.unproved_po,
         "proved_interactively": status.proved_interactively,
         "proved_automatically": status.proved_automatically,
+        # NG projects only; zero elsewhere because the columns do not exist.
+        "proved_by_mechanism": status.proved_by_mechanism,
+        "unreliably_proved": status.unreliably_proved,
+        "disproved": status.disproved,
         "proof_percentage": status.proof_percentage,
         "groups": [
             {
@@ -654,6 +658,13 @@ async def atelierb_counter_example(
     points straight at a missing invariant or guard.
 
     Requires an NG project with the mechanism enabled, as atelierb_extprove does.
+
+    NOT CONFIRMED. Tried on a deliberately false assertion with z3, this printed
+    the same report as an ordinary external proof and no counter-example, for
+    every `driver` value attempted. Either the argument takes a value documented
+    nowhere, or a counter-example needs a proof obligation already disproved
+    rather than merely unproved. The raw bbatch output is passed through
+    untouched so the caller can judge what came back.
 
     Args:
         project_name: Name of the project.

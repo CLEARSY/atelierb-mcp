@@ -136,7 +136,7 @@ Trends:
 | pr | prove | EXPOSED | `atelierb_prove` |
 | xtp | extprove | `atelierb_extprove` | NG projects only; mechanism validated against the project |
 | xtr | extreplay | `atelierb_extreplay` | NG projects only |
-| xce | extcounter_example | `atelierb_counter_example` | NG projects only; the `driver` argument stays undocumented upstream |
+| xce | extcounter_example | `atelierb_counter_example` | NG projects only. **Exposed but not confirmed**: on a false assertion it printed the same report as `xtp` and no counter-example, whatever the `driver` value. See the caveat below. |
 | vr | verify_rule | PRO-ONLY | mechanical rule verification; **not in Community Edition**; out of scope while server targets CE |
 | u | unprove | `atelierb_unprove` | destructive; interactive proofs survive and replay with force -2 |
 | to | timeout | `atelierb_proof_timeout` (read) + `timeout_seconds` on `atelierb_prove` | read-only as a tool: `to N` is scoped to one bbatch session, so setting it standalone changes nothing |
@@ -260,6 +260,22 @@ using this part of the surface:
 `xtp` only submits proof obligations that are still unproved. Its third
 argument selects the drivers (all, or fast only), not the scope. To measure a
 solver over a whole component, `atelierb_unprove` first.
+
+### `xce` is exposed but its behaviour is not confirmed
+
+Exercised on a purpose-built NG project with a plainly false assertion
+(`ASSERTIONS 2 + 2 = 5`), z3 wired and `z3_pp` enabled. `xce` returned the same
+report as `xtp` (`Proving ... with external mechanism z3_pp`, `still 1 unproved
+PO`) and no counter-example, for every `driver` value tried, including the
+mechanism name itself. The proof obligation stayed `Unproved` rather than
+becoming `Disproved`, which is what `Third_Party_Provers_Manual` section 2.3
+leads one to expect from an SMT mechanism on a false goal.
+
+Two readings are open and were not separated: the `driver` argument needs a
+value not documented anywhere, or a counter-example requires a proof obligation
+already **disproved** rather than merely unproved. The tool is shipped because
+its plumbing is right, and its description says the output is passed through
+verbatim. Settling this needs the Pro documentation or a working example.
 
 ## Priority list for closing the gap
 

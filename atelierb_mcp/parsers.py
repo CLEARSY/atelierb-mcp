@@ -55,11 +55,19 @@ class ProofGroup:
     proved_automatically: int = 0
     unproved_po: int = 0
     percentage: int = 0
+    # NG projects report three more counters, absent in Compatible mode.
+    proved_by_mechanism: int = 0
+    unreliably_proved: int = 0
+    disproved: int = 0
 
     @property
     def proved_po(self) -> int:
-        """Proved either way."""
-        return self.proved_interactively + self.proved_automatically
+        """Proved by any route that counts as a proof."""
+        return (
+            self.proved_interactively
+            + self.proved_automatically
+            + self.proved_by_mechanism
+        )
 
 
 @dataclass
@@ -74,6 +82,9 @@ class ComponentStatus:
     unproved_po: int = 0
     proved_interactively: int = 0
     proved_automatically: int = 0
+    proved_by_mechanism: int = 0
+    unreliably_proved: int = 0
+    disproved: int = 0
     groups: list["ProofGroup"] = field(default_factory=list)
 
     @property
@@ -166,13 +177,42 @@ def parse_components_list(output: str) -> list[ComponentInfo]:
     return components
 
 
-# One data row of the `s` / `us` status table:
-#   | AssertionLemmas           |    3 |     0 |     0 |    3 |   0 |
-# Columns are name, NbPO, NbPRi, NbPRa, NbUn, %Pr, which is how bbatch labels
-# them: proved interactively, proved automatically, unproved, percentage.
-_STATUS_ROW = re.compile(
-    r"\|\s*(\S+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|"
-)
+# The status table does not always have the same columns. A Compatible-mode
+# project prints
+#     |                 | NbPO | NbPRi | NbPRa | NbUn | %Pr |
+# while an NG project adds the external-mechanism counters
+#     |       | NbPO | NbPRi | NbPRa | NbPRm | NbUnr | NbDis | NbUn | %Pr |
+# so the columns are read from the header rather than counted by position.
+# Reading NbUn positionally reports zero unproved on every NG project, which is
+# exactly where the external provers are used.
+_STATUS_HEADER = re.compile(r"\|\s*\|\s*NbPO\s*\|(.+?)\|\s*%Pr\s*\|")
+_STATUS_FIELDS = {
+    "NbPO": "total_po",
+    "NbPRi": "proved_interactively",
+    "NbPRa": "proved_automatically",
+    "NbPRm": "proved_by_mechanism",
+    "NbUnr": "unreliably_proved",
+    "NbDis": "disproved",
+    "NbUn": "unproved_po",
+}
+
+
+def _status_columns(output: str) -> list[str] | None:
+    """Column names of the status table, read off its header row."""
+    match = _STATUS_HEADER.search(output)
+    if not match:
+        return None
+    middle = [c.strip() for c in match.group(1).split("|") if c.strip()]
+    return ["NbPO", *middle, "%Pr"]
+
+
+def _status_rows(output: str, columns: list[str]):
+    """Yield (name, {column: value}) for each data row of the status table."""
+    cells = r"\|\s*(\d+)\s*" * len(columns)
+    row = re.compile(r"\|\s*(\S+)\s*" + cells + r"\|")
+    for match in row.finditer(output):
+        values = dict(zip(columns, (int(v) for v in match.groups()[1:])))
+        yield match.group(1), values
 
 
 def parse_status(output: str) -> ComponentStatus | None:
@@ -204,21 +244,20 @@ def parse_status(output: str) -> ComponentStatus | None:
     elif re.search(rf"^\s*{re.escape(name)}\s+TypeChecked", output, re.IGNORECASE | re.MULTILINE):
         status.typecheck_ok = True
 
-    for row in _STATUS_ROW.finditer(output):
-        group = ProofGroup(
-            name=row.group(1),
-            total_po=int(row.group(2)),
-            proved_interactively=int(row.group(3)),
-            proved_automatically=int(row.group(4)),
-            unproved_po=int(row.group(5)),
-            percentage=int(row.group(6)),
-        )
+    columns = _status_columns(output)
+    if columns is None:
+        return status
+
+    for row_name, values in _status_rows(output, columns):
+        group = ProofGroup(name=row_name, percentage=values.get("%Pr", 0))
+        for column, attribute in _STATUS_FIELDS.items():
+            if column in values:
+                setattr(group, attribute, values[column])
+
         if group.name == name:
-            # The component's own row is the total, not a group.
-            status.total_po = group.total_po
-            status.proved_interactively = group.proved_interactively
-            status.proved_automatically = group.proved_automatically
-            status.unproved_po = group.unproved_po
+            # The row repeating the component name carries the totals.
+            for attribute in _STATUS_FIELDS.values():
+                setattr(status, attribute, getattr(group, attribute))
             status.proved_po = group.proved_po
         else:
             status.groups.append(group)

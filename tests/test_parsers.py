@@ -403,3 +403,36 @@ class TestIsNotNgProject:
 
     def test_ignores_a_normal_answer(self):
         assert is_not_ng_project(read_fixture("project_mechanisms_ng.txt")) is False
+
+
+class TestParseStatusNgTable:
+    """The NG status table carries three columns the Compatible one does not.
+
+    Compatible: NbPO | NbPRi | NbPRa | NbUn | %Pr
+    NG:         NbPO | NbPRi | NbPRa | NbPRm | NbUnr | NbDis | NbUn | %Pr
+
+    Counting columns by position reads NbPRm where NbUn is meant, so every NG
+    project reports zero unproved. That is exactly the kind of project the
+    external provers are used on, so the parser reads the header instead.
+    """
+
+    def test_ng_table_reports_the_real_unproved_count(self):
+        status = parse_status(read_fixture("status_ng_unproved.txt"))
+
+        assert status is not None
+        assert status.name == "ngfalse"
+        assert status.total_po == 1
+        # bbatch itself reports "Unproved 1" for this component.
+        assert status.unproved_po == 1
+        assert status.proved_po == 0
+        assert status.proved_by_mechanism == 0
+        assert status.disproved == 0
+
+    def test_compatible_table_has_no_mechanism_columns(self):
+        """The absent columns read as zero rather than shifting the others."""
+        status = parse_status(read_fixture("status_probe.txt"))
+
+        assert status.unproved_po == 3
+        assert status.proved_by_mechanism == 0
+        assert status.unreliably_proved == 0
+        assert status.disproved == 0
