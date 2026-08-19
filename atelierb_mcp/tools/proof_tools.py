@@ -21,11 +21,37 @@
 from ..bbatch_wrapper import bbatch
 from ..parsers import (
     extract_error_message,
+    is_not_ng_project,
     parse_component_info,
     parse_global_status,
+    parse_proof_mechanisms,
     parse_status,
     parse_timeout,
 )
+
+# The external-prover commands only run on a project migrated to NG mode. The
+# bare bbatch message says nothing about the way out, so spell it here once.
+_NG_HINT = (
+    "This project is not in NG mode, which the external proof mechanisms require. "
+    "Migrating it is done with the bbatch command `mip` and is IRREVERSIBLE: proof "
+    "statuses move from .pmi to .pos files. Saved interactive proofs survive and can "
+    "be replayed with atelierb_prove at force -2, but back up the project's bdp/ "
+    "directory first. This server deliberately does not migrate projects on its own."
+)
+
+
+def _ng_guard(result, project_name: str, **extra) -> dict | None:
+    """Return a helpful error payload when bbatch refused for lack of NG mode."""
+    if not is_not_ng_project(result.output):
+        return None
+    return {
+        "success": False,
+        "error": f"Project '{project_name}' is not in NG mode.",
+        "hint": _NG_HINT,
+        "project": project_name,
+        "raw_output": result.output,
+        **extra,
+    }
 
 
 def _status_payload(status) -> dict:
@@ -416,5 +442,258 @@ async def atelierb_proof_timeout() -> dict:
         "success": True,
         "timeout_seconds": value,
         "no_timeout": value == 0,
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_list_proof_mechanisms(project_name: str | None = None) -> dict:
+    """List the external proof mechanisms available.
+
+    Without a project name, lists what Atelier B ships (`spm`). With one, lists
+    what that project has enabled (`sppm`), which is the set atelierb_extprove
+    will accept: a mechanism installed but not enabled on the project cannot be
+    used there.
+
+    Args:
+        project_name: Project to inspect. Omit for the installation-wide list.
+
+    Returns:
+        Dictionary with the mechanism names and 'success' status.
+    """
+    if project_name is None:
+        result = await bbatch.proof_mechanisms()
+        scope = "installation"
+    else:
+        result = await bbatch.project_proof_mechanisms(project_name)
+        scope = "project"
+        refused = _ng_guard(result, project_name)
+        if refused:
+            return refused
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or "Failed to list proof mechanisms",
+            "raw_output": result.output,
+        }
+
+    mechanisms = parse_proof_mechanisms(result.output)
+    return {
+        "success": True,
+        "scope": scope,
+        "project": project_name,
+        "mechanisms": mechanisms,
+        "count": len(mechanisms),
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_unprove(project_name: str, component_name: str) -> dict:
+    """Discard the proof state of a component, sending every PO back to unproved.
+
+    Destructive and not undoable from here. Interactive proof scripts saved with
+    the interactive prover survive and can be replayed with atelierb_prove at
+    force -2, but automatic verdicts are lost, and on an NG project this also
+    clears the verdicts external mechanisms wrote in the .pos file. Take an
+    archive first if the proof state matters.
+
+    Args:
+        project_name: Name of the project.
+        component_name: Name of the component to unprove.
+
+    Returns:
+        Dictionary with the outcome and 'success' status.
+    """
+    result = await bbatch.unprove(project_name, component_name)
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"Failed to unprove '{component_name}'",
+            "project": project_name,
+            "component": component_name,
+            "raw_output": result.output,
+        }
+
+    return {
+        "success": True,
+        "project": project_name,
+        "component": component_name,
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_extprove(
+    project_name: str,
+    component_name: str,
+    mechanism: str,
+    fast_only: bool = False,
+) -> dict:
+    """Submit a component's unproved POs to an external prover (SMT solver).
+
+    Only proof obligations that are still unproved are submitted, so this is the
+    natural follow-up to atelierb_prove rather than a replacement.
+
+    Requires a project migrated to NG mode, with the mechanism enabled on it and
+    its binary wired in the project resource file. Calling
+    atelierb_list_proof_mechanisms with a project name reports what is usable there.
+
+    Args:
+        project_name: Name of the project.
+        component_name: Name of the component.
+        mechanism: Mechanism name, validated against the project's enabled list.
+        fast_only: Use only the mechanism's fast drivers rather than all of them.
+            This selects drivers, not which proof obligations are submitted.
+
+    Returns:
+        Dictionary with the proof outcome and 'success' status.
+    """
+    # Validate against the project rather than against a list frozen in the
+    # schema: what is usable depends on the installation and on the project.
+    available = await atelierb_list_proof_mechanisms(project_name)
+    if not available["success"]:
+        return available
+
+    if mechanism not in available["mechanisms"]:
+        return {
+            "success": False,
+            "error": f"Mechanism '{mechanism}' is not enabled on project '{project_name}'.",
+            "available_mechanisms": available["mechanisms"],
+            "hint": (
+                "Enable it on the project with the bbatch command `apm <mechanism>`, "
+                "and check its binary is wired in the project's bdp/AtelierB resource "
+                "file. atelierb_list_proof_mechanisms without a project name lists "
+                "everything the installation ships."
+            ),
+            "project": project_name,
+            "component": component_name,
+        }
+
+    result = await bbatch.extprove(project_name, component_name, mechanism, fast_only)
+
+    refused = _ng_guard(result, project_name, component=component_name)
+    if refused:
+        return refused
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"External proof failed for '{component_name}'",
+            "project": project_name,
+            "component": component_name,
+            "mechanism": mechanism,
+            "raw_output": result.output,
+        }
+
+    return {
+        "success": True,
+        "project": project_name,
+        "component": component_name,
+        "mechanism": mechanism,
+        "fast_only": fast_only,
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_extreplay(
+    project_name: str, component_name: str, mechanism: str | None = None
+) -> dict:
+    """Replay the external proofs already recorded for a component.
+
+    Re-runs the mechanisms on the proof obligations they discharged before,
+    which is how an external verdict is checked again after the model changed.
+
+    Args:
+        project_name: Name of the project.
+        component_name: Name of the component.
+        mechanism: Restrict the replay to one mechanism. Omit to replay all.
+
+    Returns:
+        Dictionary with the replay outcome and 'success' status.
+    """
+    result = await bbatch.extreplay(project_name, component_name, mechanism)
+
+    refused = _ng_guard(result, project_name, component=component_name)
+    if refused:
+        return refused
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"External replay failed for '{component_name}'",
+            "project": project_name,
+            "component": component_name,
+            "mechanism": mechanism,
+            "raw_output": result.output,
+        }
+
+    return {
+        "success": True,
+        "project": project_name,
+        "component": component_name,
+        "mechanism": mechanism,
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_counter_example(
+    project_name: str,
+    component_name: str,
+    po: str,
+    mechanism: str,
+    driver: str,
+) -> dict:
+    """Ask an external mechanism for a counter-example on one proof obligation.
+
+    When a proof obligation resists, a counter-example says why: it exhibits a
+    valuation satisfying the hypotheses and falsifying the goal, which usually
+    points straight at a missing invariant or guard.
+
+    Requires an NG project with the mechanism enabled, as atelierb_extprove does.
+
+    Args:
+        project_name: Name of the project.
+        component_name: Name of the component.
+        po: The proof obligation, written Operation.index, for instance
+            Operation_clear.5. Reading the component's .pmi through
+            atelierb_read_file reports the labels.
+        mechanism: Mechanism name, as reported by atelierb_list_proof_mechanisms.
+        driver: Driver of that mechanism to run.
+
+    Returns:
+        Dictionary with the counter-example output and 'success' status.
+    """
+    result = await bbatch.counter_example(
+        project_name, component_name, po, mechanism, driver
+    )
+
+    refused = _ng_guard(result, project_name, component=component_name, po=po)
+    if refused:
+        return refused
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"No counter-example obtained for '{po}'",
+            "project": project_name,
+            "component": component_name,
+            "po": po,
+            "mechanism": mechanism,
+            "driver": driver,
+            "raw_output": result.output,
+        }
+
+    return {
+        "success": True,
+        "project": project_name,
+        "component": component_name,
+        "po": po,
+        "mechanism": mechanism,
+        "driver": driver,
         "raw_output": result.output,
     }

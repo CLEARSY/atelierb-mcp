@@ -35,7 +35,8 @@ The server wraps Atelier B's `bbatch` command-line interface, translating MCP to
 | Category | Tools |
 |----------|-------|
 | **Project Management** | `atelierb_list_projects`, `atelierb_infos_project`, `atelierb_list_components`, `atelierb_create_project`, `atelierb_remove_project`, `atelierb_add_component`, `atelierb_remove_component` |
-| **Verification** | `atelierb_typecheck`, `atelierb_b0check`, `atelierb_pogenerate`, `atelierb_prove`, `atelierb_status`, `atelierb_unproved_status`, `atelierb_infos_component`, `atelierb_proof_timeout` |
+| **Verification** | `atelierb_typecheck`, `atelierb_b0check`, `atelierb_pogenerate`, `atelierb_prove`, `atelierb_status`, `atelierb_unproved_status`, `atelierb_infos_component`, `atelierb_proof_timeout`, `atelierb_unprove` |
+| **External provers** (NG projects) | `atelierb_list_proof_mechanisms`, `atelierb_extprove`, `atelierb_extreplay`, `atelierb_counter_example` |
 | **Code Generation** | `atelierb_generate_c`, `atelierb_generate_project_c` |
 | **File Operations** | `atelierb_list_files`, `atelierb_read_file`, `atelierb_write_file`, `atelierb_list_project_structure` |
 

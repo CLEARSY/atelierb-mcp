@@ -29,13 +29,17 @@ from .config import settings
 from .tools import (
     atelierb_add_component,
     atelierb_b0check,
+    atelierb_counter_example,
     atelierb_create_project,
+    atelierb_extprove,
+    atelierb_extreplay,
     atelierb_generate_c,
     atelierb_generate_project_c,
     atelierb_infos_component,
     atelierb_infos_project,
     atelierb_list_components,
     atelierb_list_files,
+    atelierb_list_proof_mechanisms,
     atelierb_list_project_structure,
     atelierb_list_projects,
     atelierb_pogenerate,
@@ -46,6 +50,7 @@ from .tools import (
     atelierb_remove_project,
     atelierb_status,
     atelierb_typecheck,
+    atelierb_unprove,
     atelierb_unproved_status,
     atelierb_write_file,
 )
@@ -263,6 +268,166 @@ async def list_tools(ctx, params) -> ListToolsResult:
                 "type": "object",
                 "properties": {},
                 "required": [],
+            },
+        ),
+        Tool(
+            name="atelierb_list_proof_mechanisms",
+            description=(
+                "List the external proof mechanisms (SMT solvers and friends). Without "
+                "a project name, lists what the Atelier B installation ships; with one, "
+                "lists what that project has enabled, which is what atelierb_extprove "
+                "will accept there. A mechanism can be installed yet not enabled on a "
+                "given project."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {
+                        "type": "string",
+                        "description": (
+                            "Project to inspect. Omit for the installation-wide list."
+                        ),
+                    },
+                },
+                "required": [],
+            },
+        ),
+        Tool(
+            name="atelierb_unprove",
+            description=(
+                "Discard the proof state of a component, sending every proof obligation "
+                "back to unproved. DESTRUCTIVE and not undoable from here: automatic "
+                "verdicts are lost, and on an NG project the verdicts written by external "
+                "mechanisms are cleared too. Interactive proof scripts survive and can be "
+                "replayed with atelierb_prove at force -2. Use it to redo a proof from "
+                "scratch or to measure a prover on a whole component."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {
+                        "type": "string",
+                        "description": "Name of the project",
+                    },
+                    "component_name": {
+                        "type": "string",
+                        "description": "Name of the component to unprove",
+                    },
+                },
+                "required": ["project_name", "component_name"],
+            },
+        ),
+        Tool(
+            name="atelierb_extprove",
+            description=(
+                "Submit a component's still-unproved proof obligations to an external "
+                "prover such as an SMT solver. Natural follow-up to atelierb_prove, not a "
+                "replacement: already-proved obligations are not resubmitted. Requires a "
+                "project in NG mode with the mechanism enabled; the tool checks the "
+                "mechanism against the project and lists the valid ones on error."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {
+                        "type": "string",
+                        "description": "Name of the project",
+                    },
+                    "component_name": {
+                        "type": "string",
+                        "description": "Name of the component",
+                    },
+                    "mechanism": {
+                        "type": "string",
+                        "description": (
+                            "Mechanism name, as reported by atelierb_list_proof_mechanisms "
+                            "for this project (for example z3_pp)"
+                        ),
+                    },
+                    "fast_only": {
+                        "type": "boolean",
+                        "description": (
+                            "Use only the mechanism's fast drivers rather than all of "
+                            "them. This selects drivers, not which proof obligations are "
+                            "submitted."
+                        ),
+                        "default": False,
+                    },
+                },
+                "required": ["project_name", "component_name", "mechanism"],
+            },
+        ),
+        Tool(
+            name="atelierb_extreplay",
+            description=(
+                "Replay the external proofs already recorded for a component, which is "
+                "how an external verdict is checked again after the model changed. "
+                "Requires a project in NG mode."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {
+                        "type": "string",
+                        "description": "Name of the project",
+                    },
+                    "component_name": {
+                        "type": "string",
+                        "description": "Name of the component",
+                    },
+                    "mechanism": {
+                        "type": "string",
+                        "description": (
+                            "Restrict the replay to one mechanism. Omit to replay all."
+                        ),
+                    },
+                },
+                "required": ["project_name", "component_name"],
+            },
+        ),
+        Tool(
+            name="atelierb_counter_example",
+            description=(
+                "Ask an external mechanism for a counter-example on one proof obligation. "
+                "When a proof obligation resists, this exhibits a valuation that satisfies "
+                "the hypotheses and falsifies the goal, which usually points straight at a "
+                "missing invariant or guard. Requires a project in NG mode with the "
+                "mechanism enabled."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {
+                        "type": "string",
+                        "description": "Name of the project",
+                    },
+                    "component_name": {
+                        "type": "string",
+                        "description": "Name of the component",
+                    },
+                    "po": {
+                        "type": "string",
+                        "description": (
+                            "The proof obligation, written Operation.index, for example "
+                            "Operation_clear.5"
+                        ),
+                    },
+                    "mechanism": {
+                        "type": "string",
+                        "description": "Mechanism name, as reported by atelierb_list_proof_mechanisms",
+                    },
+                    "driver": {
+                        "type": "string",
+                        "description": "Driver of that mechanism to run",
+                    },
+                },
+                "required": [
+                    "project_name",
+                    "component_name",
+                    "po",
+                    "mechanism",
+                    "driver",
+                ],
             },
         ),
         Tool(
@@ -554,6 +719,34 @@ async def call_tool(ctx, params) -> CallToolResult:
             )
         elif name == "atelierb_proof_timeout":
             result = await atelierb_proof_timeout()
+        elif name == "atelierb_list_proof_mechanisms":
+            result = await atelierb_list_proof_mechanisms(arguments.get("project_name"))
+        elif name == "atelierb_unprove":
+            result = await atelierb_unprove(
+                arguments["project_name"],
+                arguments["component_name"],
+            )
+        elif name == "atelierb_extprove":
+            result = await atelierb_extprove(
+                arguments["project_name"],
+                arguments["component_name"],
+                arguments["mechanism"],
+                arguments.get("fast_only", False),
+            )
+        elif name == "atelierb_extreplay":
+            result = await atelierb_extreplay(
+                arguments["project_name"],
+                arguments["component_name"],
+                arguments.get("mechanism"),
+            )
+        elif name == "atelierb_counter_example":
+            result = await atelierb_counter_example(
+                arguments["project_name"],
+                arguments["component_name"],
+                arguments["po"],
+                arguments["mechanism"],
+                arguments["driver"],
+            )
         elif name == "atelierb_list_files":
             result = await atelierb_list_files(
                 arguments.get("project_name"),

@@ -1,0 +1,23 @@
+Beginning interpretation ...
+
+Available proof mechanisms...
+
+      altergo
+      cvc4_ddrp1_pp
+      cvc4_pp
+      cvc4_simple
+      cvc5_ddrp1_pp
+      cvc5_pp
+      cvc5_simple
+      iprover_pp
+      smtlib_simple
+      smtpp_rp0
+      smtpp_rp1
+      vampire_pp
+      z3_ddrp1_pp
+      z3_pp
+      z3_simple
+
+End of proof mechanisms
+
+End of interpretation (1 lines)

@@ -205,6 +205,47 @@ class BbatchWrapper:
         """Status of every component of the project that still has unproved POs."""
         return await self.execute_with_project(project, "ug")
 
+    async def unprove(self, project: str, component: str) -> BbatchResult:
+        """Discard the proof state of a component, sending every PO back to unproved."""
+        return await self.execute_with_project(project, f"u {component}")
+
+    async def proof_mechanisms(self) -> BbatchResult:
+        """List the proof mechanisms installed with Atelier B (`spm`)."""
+        return await self.execute("spm")
+
+    async def project_proof_mechanisms(self, project: str) -> BbatchResult:
+        """List the proof mechanisms enabled on a project (`sppm`, NG projects only)."""
+        return await self.execute_with_project(project, "sppm")
+
+    async def extprove(
+        self, project: str, component: str, mechanism: str, fast_only: bool = False
+    ) -> BbatchResult:
+        """Submit the component's unproved POs to an external mechanism.
+
+        The third argument of `xtp` selects the drivers, not the scope: 0 uses
+        every driver of the mechanism, 1 only the fast ones. Either way only
+        unproved proof obligations are submitted.
+        """
+        option = "1" if fast_only else "0"
+        return await self.execute_with_project(
+            project, f"xtp {component} {mechanism} {option}"
+        )
+
+    async def extreplay(
+        self, project: str, component: str, mechanism: str | None = None
+    ) -> BbatchResult:
+        """Replay the external proofs already recorded for a component."""
+        command = f"xtr {component}" if mechanism is None else f"xtr {component} {mechanism}"
+        return await self.execute_with_project(project, command)
+
+    async def counter_example(
+        self, project: str, component: str, po: str, mechanism: str, driver: str
+    ) -> BbatchResult:
+        """Ask an external mechanism for a counter-example on one proof obligation."""
+        return await self.execute_with_project(
+            project, f"xce {component} {po} {mechanism} {driver}"
+        )
+
     async def proof_timeout(self) -> BbatchResult:
         """Read the configured proof timeout (0 = no limit).
 

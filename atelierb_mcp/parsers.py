@@ -270,6 +270,50 @@ def parse_global_status(output: str) -> list[ComponentStatus]:
     return statuses
 
 
+def parse_proof_mechanisms(output: str) -> list[str]:
+    """Extract the mechanism names listed by `spm` or `sppm`.
+
+    Both print a header, one indented name per line, then a closing line::
+
+        Available proof mechanisms...
+              z3_pp
+              z3_simple
+        End of proof mechanisms
+
+    Args:
+        output: Raw bbatch output.
+
+    Returns:
+        The mechanism names, in the order listed. Empty when the project has
+        none enabled, which is a legitimate answer rather than a failure.
+    """
+    mechanisms = []
+    collecting = False
+    for line in output.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if "proof mechanisms" in stripped.lower():
+            # "Available proof mechanisms..." opens, "End of ..." closes.
+            collecting = not stripped.lower().startswith("end")
+            continue
+        if collecting:
+            mechanisms.append(stripped)
+
+    return mechanisms
+
+
+def is_not_ng_project(output: str) -> bool:
+    """Tell whether bbatch refused because the project is not in NG mode.
+
+    The external-prover commands (`xtp`, `xtr`, `xce`) and the mechanism
+    commands (`apm`, `sppm`) only work on a project migrated to NG mode, and
+    answer `The project mode is not NG.` otherwise. That message is worth
+    recognising: on its own it says nothing about what to do next.
+    """
+    return "project mode is not ng" in output.lower()
+
+
 def parse_component_info(output: str) -> dict | None:
     """Parse the output of infos_component (ic).
 

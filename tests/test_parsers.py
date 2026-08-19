@@ -25,12 +25,14 @@ import pytest
 
 from atelierb_mcp.parsers import (
     extract_error_message,
+    is_not_ng_project,
     label_pmi_entries,
     parse_component_info,
     parse_components_list,
     parse_global_status,
     parse_po_labels,
     parse_projects_list,
+    parse_proof_mechanisms,
     parse_status,
     parse_timeout,
 )
@@ -363,3 +365,41 @@ class TestPmiPoPairing:
         )
         po = "THEORY ProofList\nEND\n&\nTHEORY Formulas\nEND\n"
         assert label_pmi_entries(pmi, po) == []
+
+
+class TestParseProofMechanisms:
+    """Tests for parse_proof_mechanisms (`spm` and `sppm`)."""
+
+    def test_installation_mechanisms(self):
+        """`spm` lists what Atelier B ships, 15 solvers on CE 24.04.2."""
+        mechanisms = parse_proof_mechanisms(read_fixture("proof_mechanisms.txt"))
+
+        assert len(mechanisms) == 15
+        assert "z3_pp" in mechanisms
+        assert "altergo" in mechanisms
+        assert "cvc5_simple" in mechanisms
+        # The header and footer lines must not leak into the list.
+        assert not any("mechanism" in m.lower() for m in mechanisms)
+
+    def test_project_mechanisms_are_a_subset(self):
+        """`sppm` lists what one project enabled, which is usually far fewer."""
+        enabled = parse_proof_mechanisms(read_fixture("project_mechanisms_ng.txt"))
+        installed = parse_proof_mechanisms(read_fixture("proof_mechanisms.txt"))
+
+        assert enabled == ["z3_pp", "z3_simple"]
+        assert set(enabled) < set(installed)
+
+    def test_refusal_yields_no_mechanisms(self):
+        """A project that is not NG answers with a refusal, not a list."""
+        assert parse_proof_mechanisms(read_fixture("project_mechanisms_not_ng.txt")) == []
+
+
+class TestIsNotNgProject:
+    """Tests for the NG-mode refusal detector."""
+
+    def test_detects_the_refusal(self):
+        """The external-prover commands all refuse with this one sentence."""
+        assert is_not_ng_project(read_fixture("project_mechanisms_not_ng.txt")) is True
+
+    def test_ignores_a_normal_answer(self):
+        assert is_not_ng_project(read_fixture("project_mechanisms_ng.txt")) is False

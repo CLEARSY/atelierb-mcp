@@ -32,15 +32,15 @@ changes.
 | | Count |
 |---|---|
 | **bbatch commands documented** | 81 |
-| **MCP tools registered** | 21 |
-| **bbatch commands exposed** as their own MCP tool | 18 |
+| **MCP tools registered** | 26 |
+| **bbatch commands exposed** as their own MCP tool | 24 |
 | bbatch commands handled **internally** by the wrapper (not their own tool) | 2 (`op`, `clp`) |
 | MCP tools that don't wrap a bbatch command (filesystem helpers) | 4 |
 | bbatch commands **out of scope** (interactive editor / legacy format / printer / subprocess lifecycle) | 22 |
 | bbatch commands **Pro-only** (not in Community Edition; out of scope while server targets CE) | 1+ (confirmed: `vr`; others TBC) |
-| bbatch commands **not exposed** but in scope on CE (the actual gap to close) | **38** |
+| bbatch commands **not exposed** but in scope on CE (the actual gap to close) | **32** |
 
-**Coverage of in-scope CE bbatch commands**: 18 / (18 + 38) = **32.1 %**.
+**Coverage of in-scope CE bbatch commands**: 24 / (24 + 32) = **42.9 %**.
 
 Trends:
 
@@ -79,7 +79,7 @@ Trends:
 | pwd | print_working_directory | OUT OF SCOPE | filesystem nav |
 | q | quit | OUT OF SCOPE | subprocess lifecycle handled by wrapper |
 | rs | restore_source | NOT EXPOSED | component-level restore from archive |
-| spm | show_proof_mechanisms | NOT EXPOSED | useful for listing what's available before `xtp` |
+| spm | show_proof_mechanisms | `atelierb_list_proof_mechanisms` | without a project name |
 | srb | show_rules_base | OUT OF SCOPE | interactive editor |
 | v | version_print | NOT EXPOSED | quick win; useful for server diagnostics |
 
@@ -114,7 +114,7 @@ Trends:
 | sddl | show_definitions_directory_list | NOT EXPOSED | library management |
 | sll | show_libs_list | NOT EXPOSED | library catalogue |
 | spll | show_project_libs_list | NOT EXPOSED | library catalogue |
-| sppm | show_project_proof_mechanisms | NOT EXPOSED | useful before `xtp` |
+| sppm | show_project_proof_mechanisms | `atelierb_list_proof_mechanisms` | with a project name; promoted from Phase 2 because `xtp` validates against it |
 | sprl | show_project_readers_list | NOT EXPOSED | access control |
 | spul | show_project_users_list | NOT EXPOSED | access control |
 | spl | show_projects_list | EXPOSED | `atelierb_list_projects` |
@@ -134,11 +134,11 @@ Trends:
 |---|---|---|---|
 | po | pogenerate | EXPOSED | `atelierb_pogenerate` |
 | pr | prove | EXPOSED | `atelierb_prove` |
-| xtp | extprove | NOT EXPOSED | **high-value**: external mechanisms (mlSMT, mlproof, ...) |
-| xtr | extreplay | NOT EXPOSED | replay external proof; paired with `xtp` |
-| xce | extcounter_example | NOT EXPOSED | **highest-value**: counter-example for failed PO |
+| xtp | extprove | `atelierb_extprove` | NG projects only; mechanism validated against the project |
+| xtr | extreplay | `atelierb_extreplay` | NG projects only |
+| xce | extcounter_example | `atelierb_counter_example` | NG projects only; the `driver` argument stays undocumented upstream |
 | vr | verify_rule | PRO-ONLY | mechanical rule verification; **not in Community Edition**; out of scope while server targets CE |
-| u | unprove | NOT EXPOSED | **high-value**: reset to redo proofs |
+| u | unprove | `atelierb_unprove` | destructive; interactive proofs survive and replay with force -2 |
 | to | timeout | `atelierb_proof_timeout` (read) + `timeout_seconds` on `atelierb_prove` | read-only as a tool: `to N` is scoped to one bbatch session, so setting it standalone changes nothing |
 | co | concurrency | NOT EXPOSED | set proof concurrency threads |
 
@@ -239,6 +239,28 @@ not mean a command works**. `vr` is listed too, yet it is Pro-only, confirmed by
 the maintainer. Presence in `help` is necessary, never sufficient; only running
 the command settles it.
 
+## NG mode gates the external provers, measured 2026-08-19
+
+`xtp`, `xtr`, `xce`, `apm` and `sppm` all answer `The project mode is not NG.`
+unless the project has been migrated. Three consequences worth knowing before
+using this part of the surface:
+
+- **Migration is `mip`, and it is irreversible**: proof statuses move from
+  `.pmi` to `.pos`. Saved interactive proofs survive and replay with
+  `atelierb_prove` at force -2. This server never migrates a project on its
+  own; the tools return the reason and the way out instead.
+- **Installed is not enabled.** The installation ships 15 mechanisms, and a
+  given project typically enables one or two (`BProofPatterns`: `z3_pp`,
+  `z3_simple`). `atelierb_extprove` validates against the project's list, not
+  against the installation's, and reports the valid names on error.
+- **The solver binary is wired per project**, through `ATB*Proof*<NAME>` in
+  `bdp/AtelierB`, next to `ATB*ATB*Project_Mode_NG: TRUE` which is where the
+  mode itself is recorded.
+
+`xtp` only submits proof obligations that are still unproved. Its third
+argument selects the drivers (all, or fast only), not the scope. To measure a
+solver over a whole component, `atelierb_unprove` first.
+
 ## Priority list for closing the gap
 
 Ranked by **user-facing value × implementation cost** for Claude-driven workflows. Each row references the bbatch abbrev and the rationale for the priority.
@@ -247,10 +269,10 @@ Ranked by **user-facing value × implementation cost** for Claude-driven workflo
 
 | # | Command(s) | Proposed MCP tool name | Why |
 |---|---|---|---|
-| 1 | `xce` | `atelierb_counter_example` | When a PO fails, this is the single most useful next step. Today the user sees "fail" without diagnostic content. CE availability confirmed 2026-08-19: 15 mechanisms installed. |
+| 1 | `xce` | `atelierb_counter_example` | **DONE 2026-08-19.** When a PO fails, this is the single most useful next step. Today the user sees "fail" without diagnostic content. CE availability confirmed 2026-08-19: 15 mechanisms installed. |
 | 2 | `us` / `ug` | `atelierb_unproved_status` (with optional component name) | **DONE 2026-08-19.** "What's left to prove?" is the most asked question during a proof session. |
-| 3 | `xtp` / `xtr` | `atelierb_extprove`, `atelierb_extreplay` | Apply external proof mechanisms (mlSMT, ...) before manual interactive proof. Often closes hard POs auto. CE availability confirmed 2026-08-19: 15 mechanisms installed. |
-| 4 | `u` | `atelierb_unprove` | Reset proof state to redo. Today the user has to delete `.pmi` files manually. |
+| 3 | `xtp` / `xtr` | `atelierb_extprove`, `atelierb_extreplay` | **DONE 2026-08-19.** Apply external proof mechanisms (mlSMT, ...) before manual interactive proof. Often closes hard POs auto. CE availability confirmed 2026-08-19: 15 mechanisms installed. |
+| 4 | `u` | `atelierb_unprove` | **DONE 2026-08-19.** Reset proof state to redo. Today the user has to delete `.pmi` files manually. |
 | 5 | `m` / `r` | `atelierb_make_all`, `atelierb_remake` | One-shot "typecheck + POG + prove all" for project bootstrapping. |
 | 6 | `pchk` | `atelierb_project_check` | IMPORTS-graph integrity. Catches structural issues `typecheck` misses. |
 | 7 | `arc` / `res` | `atelierb_archive`, `atelierb_restore` | Snapshot before risky proof attempts; restore on backtrack. Pairs naturally with `unprove`. |
