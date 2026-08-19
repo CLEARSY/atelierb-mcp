@@ -45,6 +45,7 @@ from .tools import (
     atelierb_list_project_structure,
     atelierb_list_projects,
     atelierb_make_all,
+    atelierb_metrics,
     atelierb_pogenerate,
     atelierb_proof_timeout,
     atelierb_project_check,
@@ -56,6 +57,7 @@ from .tools import (
     atelierb_restore,
     atelierb_status,
     atelierb_typecheck,
+    atelierb_version,
     atelierb_unprove,
     atelierb_unproved_status,
     atelierb_write_file,
@@ -565,6 +567,33 @@ async def list_tools(ctx, params) -> ListToolsResult:
             },
         ),
         Tool(
+            name="atelierb_version",
+            description=(
+                "Report the Atelier B version, edition and resource settings. Useful as a "
+                "first diagnostic, and the only readable place for several settings: the "
+                "resources say where the external solvers and ProB are wired, and where "
+                "the project database lives."
+            ),
+            inputSchema={"type": "object", "properties": {}, "required": []},
+        ),
+        Tool(
+            name="atelierb_metrics",
+            description=(
+                "Detailed proof metrics for a whole project. Splits the results finer "
+                "than atelierb_status: separate counts for what an external mechanism "
+                "discharged and what Atelier B's own prover did, plus unreliable and "
+                "disproved verdicts. Project-wide by design; the underlying command "
+                "ignores a component name."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {"type": "string", "description": "Name of the project"},
+                },
+                "required": ["project_name"],
+            },
+        ),
+        Tool(
             name="atelierb_list_files",
             description="List B source files in the workspace. Supports filtering by project and extension (.mch, .ref, .imp, .erf, etc.)",
             inputSchema={
@@ -907,6 +936,10 @@ async def call_tool(ctx, params) -> CallToolResult:
             result = await atelierb_generate_rust(
                 arguments["project_name"], arguments["component_name"]
             )
+        elif name == "atelierb_version":
+            result = await atelierb_version()
+        elif name == "atelierb_metrics":
+            result = await atelierb_metrics(arguments["project_name"])
         elif name == "atelierb_list_files":
             result = await atelierb_list_files(
                 arguments.get("project_name"),

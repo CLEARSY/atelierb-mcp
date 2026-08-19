@@ -81,7 +81,7 @@ Trends:
 | rs | restore_source | NOT EXPOSED | component-level restore from archive |
 | spm | show_proof_mechanisms | `atelierb_list_proof_mechanisms` | without a project name |
 | srb | show_rules_base | OUT OF SCOPE | interactive editor |
-| v | version_print | NOT EXPOSED | quick win; useful for server diagnostics |
+| v | version_print | `atelierb_version` | version, edition and the resource settings |
 
 ## B. Project Level Commands (31)
 
@@ -96,7 +96,7 @@ Trends:
 | crp | create_project | EXPOSED | `atelierb_create_project` |
 | crpm | create_project_manifest | NOT EXPOSED | manifest-driven project creation |
 | epr | edit_project_res | OUT OF SCOPE | interactive editor |
-| xtm | extmetrics | NOT EXPOSED | proof metrics; useful for status dashboards |
+| xtm | extmetrics | `atelierb_metrics` | project-wide; answers `arg <name> not used` to a component name |
 | glfa | get_list_from_archive | NOT EXPOSED | inspect archive before restore |
 | gchk | global_project_check | NOT EXPOSED | **high-value**: full-project pre-flight |
 | ip | infos_project | EXPOSED | `atelierb_infos_project` |
@@ -306,6 +306,21 @@ Two commands of this batch do not work on the reference installation:
   `C:\Program Files\Atelier B ...`. The translator mis-parses its own command
   line when the installation path contains a space. This is an Atelier B defect,
   not a server one; the tool detects the mangled name and says so.
+
+### bbatch needs HOME, and answers wrongly without it
+
+Found while adding `xtm`. bbatch has Unix heritage and reads `HOME` to locate
+its user settings. Without it, it does not fail: **it answers wrongly**. `xtm`
+reports `The project mode is not NG.` for a project that is in Compatible mode,
+and nothing distinguishes that from a real refusal.
+
+This matters because a client may start the server with a trimmed environment,
+and the MCP SDK's own default environment is trimmed: it passes `USERPROFILE`
+and `APPDATA` but not `HOME`. Measured by bisection over the 74 variables the
+default set drops, `HOME` alone accounts for the difference.
+
+The server now fills `HOME` in from `USERPROFILE` when the parent did not pass
+it, so the answer no longer depends on how the server was started.
 
 ## Priority list for closing the gap
 

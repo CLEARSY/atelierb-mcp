@@ -23,6 +23,8 @@ from pathlib import Path
 from ..bbatch_wrapper import bbatch
 from ..parsers import (
     extract_error_message,
+    parse_metrics,
+    parse_version,
     is_not_ng_project,
     parse_component_info,
     parse_global_status,
@@ -962,5 +964,73 @@ async def atelierb_generate_rust(project_name: str, component_name: str) -> dict
         "success": True,
         "project": project_name,
         "component": component_name,
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_version() -> dict:
+    """Report the Atelier B version, edition, and its resource settings.
+
+    Useful as a first diagnostic when something behaves unexpectedly, and the
+    only readable place for several settings: the resources say where the
+    external solvers and ProB are wired, and where the project database lives.
+
+    Returns:
+        Dictionary with the version, the edition, the B compiler version, and
+        the full resource mapping.
+    """
+    result = await bbatch.get_version()
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or "Failed to read the Atelier B version",
+            "raw_output": result.output,
+        }
+
+    info = parse_version(result.output)
+    if info is None:
+        return {
+            "success": False,
+            "error": "Could not find a version line in the output",
+            "raw_output": result.output,
+        }
+
+    return {"success": True, **info, "raw_output": result.output}
+
+
+async def atelierb_metrics(project_name: str) -> dict:
+    """Detailed proof metrics for a whole project.
+
+    Splits the proof results finer than atelierb_status: separate counts for
+    what an external mechanism discharged and what Atelier B's own prover did,
+    plus the unreliable and disproved verdicts. One row per component and a
+    total.
+
+    Project-wide by design: the underlying command ignores a component name.
+
+    Args:
+        project_name: Name of the project.
+
+    Returns:
+        Dictionary with per-component metrics and the project total.
+    """
+    result = await bbatch.metrics(project_name)
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"Failed to read metrics for '{project_name}'",
+            "project": project_name,
+            "raw_output": result.output,
+        }
+
+    metrics = parse_metrics(result.output)
+    return {
+        "success": True,
+        "project": project_name,
+        **metrics,
         "raw_output": result.output,
     }

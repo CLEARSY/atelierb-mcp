@@ -20,12 +20,33 @@
 
 import asyncio
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
 from .config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _bbatch_env() -> dict[str, str]:
+    """Environment for the bbatch subprocess, with HOME guaranteed.
+
+    bbatch has Unix heritage and reads HOME to find its user settings. Without
+    it, it does not fail: it answers wrongly. `xtm` reports `The project mode is
+    not NG.` for a project that is in Compatible mode, and a caller has no way
+    to tell that apart from a real answer.
+
+    A client that starts this server with a trimmed environment gets exactly
+    that, and the MCP SDK's own default environment is trimmed. So HOME is
+    filled in from USERPROFILE when the parent process did not pass it.
+    """
+    env = dict(os.environ)
+    if not env.get("HOME"):
+        fallback = env.get("USERPROFILE") or str(Path.home())
+        if fallback:
+            env["HOME"] = fallback
+    return env
 
 
 @dataclass
@@ -82,6 +103,7 @@ class BbatchWrapper:
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_bbatch_env(),
             )
 
             stdout, stderr = await asyncio.wait_for(
@@ -204,6 +226,13 @@ class BbatchWrapper:
     async def unproved_global(self, project: str) -> BbatchResult:
         """Status of every component of the project that still has unproved POs."""
         return await self.execute_with_project(project, "ug")
+
+    async def metrics(self, project: str) -> BbatchResult:
+        """Detailed proof metrics for a project (`xtm`).
+
+        Project-wide: `xtm` answers `arg <name> not used` to a component name.
+        """
+        return await self.execute_with_project(project, "xtm")
 
     async def project_check(self, project: str, main_component: str) -> BbatchResult:
         """Run the Project Checker on the IMPORTS graph, from a main component."""

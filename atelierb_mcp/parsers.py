@@ -353,6 +353,85 @@ def is_not_ng_project(output: str) -> bool:
     return "project mode is not ng" in output.lower()
 
 
+def parse_version(output: str) -> dict | None:
+    """Parse the output of version_print (v).
+
+    The command prints the edition and version on one line, then a long dump of
+    the resource settings, one `NAME: value` pair per line. Those resources are
+    the only readable place for several project-level facts, so they are kept
+    rather than discarded.
+
+    Args:
+        output: Raw bbatch output.
+
+    Returns:
+        Dictionary with `version`, `edition` and the `resources` mapping, or
+        None when the version line is absent.
+    """
+    match = re.search(
+        r"ATELIER B(?:\s*\(([^)]+)\))?\s*version\s*(\S+?)\s*:", output, re.IGNORECASE
+    )
+    if not match:
+        return None
+
+    resources = {}
+    for name, value in re.findall(r"^\s*(ATB\*[\w*]+)\s*:\s*(.*?)\s*$", output, re.MULTILINE):
+        resources[name] = value
+
+    compiler = re.search(r"B Compiler version\s+(\S+)", output)
+
+    return {
+        "edition": match.group(1) or "unknown",
+        "version": match.group(2),
+        "b_compiler": compiler.group(1) if compiler else None,
+        "resources": resources,
+    }
+
+
+# The metrics table of `xtm`, one row per component plus a TOTAL row:
+#   | Component | Po | Pr | Unr | Dis | Unp | Ext | ATB |
+#   |     probe | 13 | 10 |   0 |   0 |   3 |   0 |  10 |
+_METRICS_ROW = re.compile(
+    r"\|\s*(\S+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|"
+    r"\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|"
+)
+
+
+def parse_metrics(output: str) -> dict:
+    """Parse the output of extmetrics (xtm).
+
+    Unlike the status commands, `xtm` is project-wide and ignores a component
+    argument, answering `arg <name> not used`. Its columns split the proof
+    results finer than `status` does: `Ext` counts what an external mechanism
+    discharged and `ATB` what Atelier B's own prover did.
+
+    Args:
+        output: Raw bbatch output.
+
+    Returns:
+        Dictionary with a `components` list and the `total` row, both empty when
+        no table is present.
+    """
+    components, total = [], None
+    for row in _METRICS_ROW.finditer(output):
+        entry = {
+            "name": row.group(1),
+            "total_po": int(row.group(2)),
+            "proved": int(row.group(3)),
+            "unreliably_proved": int(row.group(4)),
+            "disproved": int(row.group(5)),
+            "unproved": int(row.group(6)),
+            "proved_externally": int(row.group(7)),
+            "proved_by_atelierb": int(row.group(8)),
+        }
+        if entry["name"].upper() == "TOTAL":
+            total = entry
+        else:
+            components.append(entry)
+
+    return {"components": components, "total": total}
+
+
 def parse_component_info(output: str) -> dict | None:
     """Parse the output of infos_component (ic).
 

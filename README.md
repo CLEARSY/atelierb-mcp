@@ -51,6 +51,7 @@ The server wraps Atelier B's `bbatch` command-line interface, translating MCP to
 | **External provers** (NG projects) | `atelierb_list_proof_mechanisms`, `atelierb_extprove`, `atelierb_extreplay`, `atelierb_counter_example` |
 | **Code Generation** | `atelierb_generate_c`, `atelierb_generate_project_c`, `atelierb_generate_rust` |
 | **Project Operations** | `atelierb_project_check`, `atelierb_make_all`, `atelierb_remake`, `atelierb_archive`, `atelierb_restore` |
+| **Diagnostics** | `atelierb_version`, `atelierb_metrics` |
 | **File Operations** | `atelierb_list_files`, `atelierb_read_file`, `atelierb_write_file`, `atelierb_list_project_structure` |
 
 ## Prerequisites
