@@ -161,7 +161,7 @@ Trends:
 | b2c | ComenCtrans | EXPOSED | `atelierb_generate_c` |
 | b2c_old | ComenCOldtrans | NOT EXPOSED | legacy translator; low priority |
 | p2c | ComenCtransall | EXPOSED | `atelierb_generate_project_c` |
-| b2rust | Rusttrans | NOT EXPOSED | **high-value**: Rust output (D11 / future code-gen work) |
+| b2rust | Rusttrans | `atelierb_generate_rust` | **defective upstream**: mis-parses its command line when the install path contains a space |
 | dge | data_generation | NOT EXPOSED | ProB-based data generation (D03 / D08 cross-link) |
 
 ## G. Machine Level: Component Management (7)
@@ -216,8 +216,8 @@ protocol (see CLAUDE.md, Phase 3).
 
 | Abbrev | Command | Status | Rationale |
 |---|---|---|---|
-| m | make_all | NOT EXPOSED | **high-value**: one-shot project workflow (typecheck → POG → prove all) |
-| r | remake | NOT EXPOSED | **high-value**: remake all |
+| m | make_all | `atelierb_make_all` | action is a command abbreviation (`t`, `po`, `pr`), not a number |
+| r | remake | `atelierb_remake` | answers `Project already up to date` when there is nothing to do |
 
 ## Edition availability, measured 2026-08-19
 
