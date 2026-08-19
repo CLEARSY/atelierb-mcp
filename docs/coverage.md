@@ -278,6 +278,6 @@ If the Pro edition is added as a secondary target later, `vr` becomes a high-val
 ## Cross-project implications
 
 - **[P002 D01-RuleVerifier](../../D01-RuleVerifier/)**: `vr` (verify_rule) is Pro-only and not in scope for the CE-targeting MCP server. RuleVerifier on CE uses the auto-prover ("Atelier B kernel proof" per the registry), not `vr`, so this audit does not block RuleVerifier.
-- **[D11, Python Integration with Generated C](../../Research/MyDirections/directions.md#d11)** and Rust-generation interest needs `b2rust` exposed (Phase 1 item #10). Confirm `b2rust` exists in CE before scheduling implementation.
+- **[Python and other targets, now 06-TOPIC-CodeGeneration](../../Research/MyTopics/06-TOPIC-CodeGeneration.md)** and Rust-generation interest needs `b2rust` exposed (Phase 1 item #10). Confirm `b2rust` exists in CE before scheduling implementation.
 - **Phase-3 of this server's roadmap** (Resources facet, per `CLAUDE.md`) aligns naturally with graph commands (`dg`, `ocg`, `gpx`, `fg`, `hg`). When Phase 3 starts, prioritise graph surfaces over more bbatch tools.
 - The cross-project [atelierb_interaction_guide.md](../../docs/reference/atelierb_interaction_guide.md) does not yet cover `xtp` / `xce` / `bart`; updating it should happen in parallel with each Phase 1 tool addition. The guide should also gain an "Edition" column or note marking which commands are Pro-only.
