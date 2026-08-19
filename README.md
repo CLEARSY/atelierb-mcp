@@ -20,7 +20,7 @@ Most recent first.
 | Date | Change |
 |------|--------|
 | 2026-08-19 | **Phase 1 closed: fifteen bbatch commands added**, coverage 25 % to 54 %. Project check, archive and restore, make-all and remake, Rust generation, plus: what is left to prove (`us` / `ug`), component metadata (`ic`), prover timeout (`to`), unprove (`u`), the external SMT provers (`xtp`, `xtr`, `xce`) and the mechanism listings (`spm` / `sppm`) |
-| 2026-08-19 | Projects created by the server now **appear in the Atelier B IDE**: `crp` does not write the workspace descriptor the IDE reads, so the server does |
+| 2026-08-19 | Projects created by the server now **appear in the workspace you browse**. Atelier B can hold several workspaces, each being a directory of `<project>.desc` descriptors; `crp` registers a new project in the default workspace only, so the server also writes the descriptor into the one `ATELIERB_WORKSPACE` points at |
 | 2026-08-13 | **Ported to the mcp 2.0 protocol**, upper version bound lifted |
 | 2026-08-06 | PMI proof files read through the sibling PO file, so proof state is attributed to the right proof obligation |
 | 2026-08-06 | B sources moved to `src/`, out of the translation directory |
