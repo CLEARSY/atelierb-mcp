@@ -293,8 +293,14 @@ Two commands of this batch do not work on the reference installation:
 
 - **`arc` and `res`.** Every archive attempt answered `Cannot Attach project`
   and `Cannot access directory <bdb>/tmp`, leaving a zero-byte file, although
-  that directory exists, is writable and holds a MANIFEST. The tar path was not
-  the cause (tried short and long, forward and back slashes). Not isolated.
+  that directory exists, is writable and holds a MANIFEST. Neither the tar path
+  nor a space in the database directory is the cause: rebuilding the workspace
+  under `C:\Work\B	estbdb`, with no space anywhere, and pointing bbatch at it
+  with `-r=`, reproduces the failure exactly. The cause was not isolated here.
+  **Archiving is being reworked upstream** (a new mode archives a project with
+  its dependencies and recreates the workspace needed to host it), so these two
+  tools are expected to start working on a future Atelier B release and are
+  shipped ready for it.
 - **`b2rust`.** It reports working on a component it was never given:
   `b2rust execution started on component Files\Atelier`, which is a fragment of
   `C:\Program Files\Atelier B ...`. The translator mis-parses its own command
