@@ -205,6 +205,48 @@ class BbatchWrapper:
         """Status of every component of the project that still has unproved POs."""
         return await self.execute_with_project(project, "ug")
 
+    async def project_check(self, project: str, main_component: str) -> BbatchResult:
+        """Run the Project Checker on the IMPORTS graph, from a main component."""
+        return await self.execute_with_project(project, f"pchk {main_component}")
+
+    async def archive(self, project: str, archive_path: str, scope: int) -> BbatchResult:
+        """Archive a project to a tar file.
+
+        `arc` refuses a project that is already open, unlike every other
+        project-level command, so this one does not go through
+        `execute_with_project`.
+        """
+        return await self.execute(f"arc {project} {archive_path} {scope}")
+
+    async def restore(
+        self, archive_path: str, project: str, project_path: str | None = None
+    ) -> BbatchResult:
+        """Restore a project from a tar archive. Also refuses an open project."""
+        command = f"res {archive_path} {project}"
+        if project_path:
+            command += f" {project_path}"
+        return await self.execute(command)
+
+    async def make_all(
+        self, project: str, action: str, force: int | None = None
+    ) -> BbatchResult:
+        """Run one action over every component of the project.
+
+        `action` is a bbatch command abbreviation (`t`, `po`, `pr`), not a
+        number: `m 0` answers `Unknown function name: 0`.
+        """
+        command = f"m {action}" if force is None else f"m {action} {force}"
+        return await self.execute_with_project(project, command)
+
+    async def remake(self, project: str, force: int | None = None) -> BbatchResult:
+        """Bring the whole project up to date."""
+        command = "r" if force is None else f"r {force}"
+        return await self.execute_with_project(project, command)
+
+    async def translate_to_rust(self, project: str, component: str) -> BbatchResult:
+        """Generate Rust for an implementation and its dependencies."""
+        return await self.execute_with_project(project, f"b2rust {component}")
+
     async def unprove(self, project: str, component: str) -> BbatchResult:
         """Discard the proof state of a component, sending every PO back to unproved."""
         return await self.execute_with_project(project, f"u {component}")

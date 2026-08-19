@@ -18,6 +18,8 @@
 
 """Proof-related MCP tools for Atelier B."""
 
+from pathlib import Path
+
 from ..bbatch_wrapper import bbatch
 from ..parsers import (
     extract_error_message,
@@ -706,5 +708,259 @@ async def atelierb_counter_example(
         "po": po,
         "mechanism": mechanism,
         "driver": driver,
+        "raw_output": result.output,
+    }
+
+
+_ARCHIVE_SCOPES = {"sources": 0, "all": 1, "sources_and_proofs": 2}
+
+
+async def atelierb_project_check(project_name: str, main_component: str) -> dict:
+    """Check the structural integrity of a project's IMPORTS graph.
+
+    Catches what typecheck cannot see, because typecheck looks at one component
+    at a time: a machine seen but never imported, a missing main component, a
+    broken link in the architecture. Worth running before a full proof campaign.
+
+    Args:
+        project_name: Name of the project.
+        main_component: The component at the top of the IMPORTS graph.
+
+    Returns:
+        Dictionary with the checker verdict and 'success' status. A failed check
+        is a real answer about the project, not a tool error, so the findings are
+        in raw_output either way.
+    """
+    result = await bbatch.project_check(project_name, main_component)
+    passed = "Project Checking failed" not in result.output
+
+    return {
+        "success": True,
+        "project": project_name,
+        "main_component": main_component,
+        "check_passed": passed,
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_archive(
+    project_name: str, archive_path: str, scope: str = "sources_and_proofs"
+) -> dict:
+    """Archive a project into a tar file.
+
+    The natural companion of atelierb_unprove and of any risky proof attempt:
+    take a snapshot first, restore if the attempt goes wrong.
+
+    NOT CONFIRMED on the reference installation. Every attempt answered
+    `Cannot Attach project` and `Cannot access directory <bdb>/tmp`, leaving a
+    zero-byte file, although that directory exists and is writable. The cause was
+    not isolated. The plumbing is here and the raw output is passed through.
+
+    Args:
+        project_name: Name of the project to archive.
+        archive_path: Path of the tar file to write.
+        scope: What to include: "sources", "all", or "sources_and_proofs".
+
+    Returns:
+        Dictionary with the archive outcome and 'success' status.
+    """
+    if scope not in _ARCHIVE_SCOPES:
+        return {
+            "success": False,
+            "error": f"Unknown scope '{scope}'.",
+            "valid_scopes": sorted(_ARCHIVE_SCOPES),
+        }
+
+    result = await bbatch.archive(project_name, archive_path, _ARCHIVE_SCOPES[scope])
+    failed = "Cannot" in result.output
+
+    if not result.success or failed:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"Failed to archive '{project_name}'",
+            "project": project_name,
+            "archive_path": archive_path,
+            "raw_output": result.output,
+        }
+
+    return {
+        "success": True,
+        "project": project_name,
+        "archive_path": archive_path,
+        "scope": scope,
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_restore(
+    archive_path: str, project_name: str, project_path: str | None = None
+) -> dict:
+    """Restore a project from a tar archive.
+
+    Writes to disk. Refuses when a project of that name already exists, rather
+    than overwriting work: remove it first if that is really the intent.
+
+    NOT CONFIRMED, for the same reason as atelierb_archive: no archive could be
+    produced on the reference installation to restore from.
+
+    Args:
+        archive_path: Path of the tar archive to read.
+        project_name: Name to give the restored project.
+        project_path: Where to put the project directory. Defaults to the
+            workspace.
+
+    Returns:
+        Dictionary with the restore outcome and 'success' status.
+    """
+    from ..config import settings
+
+    target = Path(project_path) if project_path else Path(settings.workspace) / project_name
+    if target.exists():
+        return {
+            "success": False,
+            "error": (
+                f"'{target}' already exists. Restoring would write over it, so "
+                f"remove it first if that is what you want."
+            ),
+            "project": project_name,
+        }
+
+    result = await bbatch.restore(archive_path, project_name, project_path)
+
+    if not result.success or "Cannot" in result.output:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"Failed to restore '{project_name}'",
+            "project": project_name,
+            "archive_path": archive_path,
+            "raw_output": result.output,
+        }
+
+    return {
+        "success": True,
+        "project": project_name,
+        "archive_path": archive_path,
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_make_all(
+    project_name: str, action: str, force: int | None = None
+) -> dict:
+    """Run one action over every component of a project.
+
+    The one-shot way to bring a project forward: typecheck everything, generate
+    every proof obligation, or prove the lot, without naming components.
+
+    Args:
+        project_name: Name of the project.
+        action: A bbatch command abbreviation, `t` to typecheck, `po` to generate
+            proof obligations, `pr` to prove. A number is refused.
+        force: Proof force, when the action is a proof.
+
+    Returns:
+        Dictionary with the outcome and 'success' status.
+    """
+    result = await bbatch.make_all(project_name, action, force)
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"make_all '{action}' failed on '{project_name}'",
+            "project": project_name,
+            "action": action,
+            "raw_output": result.output,
+        }
+
+    return {
+        "success": True,
+        "project": project_name,
+        "action": action,
+        "force": force,
+        "already_up_to_date": "already up to date" in result.output.lower(),
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_remake(project_name: str, force: int | None = None) -> dict:
+    """Bring a whole project up to date, redoing whatever is stale.
+
+    Args:
+        project_name: Name of the project.
+        force: Proof force to use for the proof stage.
+
+    Returns:
+        Dictionary with the outcome and 'success' status.
+    """
+    result = await bbatch.remake(project_name, force)
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"Failed to remake '{project_name}'",
+            "project": project_name,
+            "raw_output": result.output,
+        }
+
+    return {
+        "success": True,
+        "project": project_name,
+        "force": force,
+        "already_up_to_date": "already up to date" in result.output.lower(),
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_generate_rust(project_name: str, component_name: str) -> dict:
+    """Generate Rust code for an implementation and its dependencies.
+
+    The Rust counterpart of atelierb_generate_c. Same prerequisite: the
+    implementation must pass atelierb_b0check first.
+
+    KNOWN DEFECT, in Atelier B rather than here: when the installation path
+    contains a space, which the default "C:/Program Files/Atelier B ..." does,
+    the translator mis-parses its own command line and reports working on a
+    component named after a fragment of that path ("Files\\Atelier"), then fails.
+    Installing Atelier B under a path without spaces is the only workaround
+    found.
+
+    Args:
+        project_name: Name of the project.
+        component_name: The implementation to translate.
+
+    Returns:
+        Dictionary with the translation outcome and 'success' status.
+    """
+    result = await bbatch.translate_to_rust(project_name, component_name)
+    failed = "error" in result.output.lower()
+
+    if not result.success or failed:
+        error = extract_error_message(result.output) or result.error
+        payload = {
+            "success": False,
+            "error": error or f"Rust generation failed for '{component_name}'",
+            "project": project_name,
+            "component": component_name,
+            "raw_output": result.output,
+        }
+        # The mangled component name is the signature of the space-in-path bug.
+        if "execution started on component" in result.output and component_name not in result.output.split("execution started on component")[1][:40]:
+            payload["hint"] = (
+                "The translator reports a component name it was never given, which "
+                "is the signature of the space-in-path defect: Atelier B installed "
+                "under a directory containing a space mis-parses its own command "
+                "line. Reinstalling under a path without spaces is the only "
+                "workaround found."
+            )
+        return payload
+
+    return {
+        "success": True,
+        "project": project_name,
+        "component": component_name,
         "raw_output": result.output,
     }

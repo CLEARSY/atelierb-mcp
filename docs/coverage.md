@@ -32,15 +32,15 @@ changes.
 | | Count |
 |---|---|
 | **bbatch commands documented** | 81 |
-| **MCP tools registered** | 26 |
-| **bbatch commands exposed** as their own MCP tool | 24 |
+| **MCP tools registered** | 32 |
+| **bbatch commands exposed** as their own MCP tool | 30 |
 | bbatch commands handled **internally** by the wrapper (not their own tool) | 2 (`op`, `clp`) |
 | MCP tools that don't wrap a bbatch command (filesystem helpers) | 4 |
 | bbatch commands **out of scope** (interactive editor / legacy format / printer / subprocess lifecycle) | 22 |
 | bbatch commands **Pro-only** (not in Community Edition; out of scope while server targets CE) | 1+ (confirmed: `vr`; others TBC) |
-| bbatch commands **not exposed** but in scope on CE (the actual gap to close) | **32** |
+| bbatch commands **not exposed** but in scope on CE (the actual gap to close) | **26** |
 
-**Coverage of in-scope CE bbatch commands**: 24 / (24 + 32) = **42.9 %**.
+**Coverage of in-scope CE bbatch commands**: 30 / (30 + 26) = **53.6 %**. Phase 1 is closed.
 
 Trends:
 
@@ -92,7 +92,7 @@ Trends:
 | apm | add_proof_mechanism | NOT EXPOSED | configure provers per project |
 | apr | add_project_reader | NOT EXPOSED | access control; low priority for MCP |
 | apu | add_project_user | NOT EXPOSED | access control; low priority for MCP |
-| arc | archive | NOT EXPOSED | **high-value**: snapshot before risky proofs |
+| arc | archive | `atelierb_archive` | **not confirmed**: answers `Cannot Attach project` here. Refuses an open project, unlike every other project command |
 | crp | create_project | EXPOSED | `atelierb_create_project` |
 | crpm | create_project_manifest | NOT EXPOSED | manifest-driven project creation |
 | epr | edit_project_res | OUT OF SCOPE | interactive editor |
@@ -110,7 +110,7 @@ Trends:
 | rpl | remove_project_lib | NOT EXPOSED | library management |
 | rpm | remove_proof_mechanism | NOT EXPOSED | per-project prover unconfig |
 | rpu | remove_project_user | NOT EXPOSED | access control |
-| res | restore | NOT EXPOSED | **high-value**: paired with `arc` for checkpoint/restore |
+| res | restore | `atelierb_restore` | **not confirmed**, no archive could be produced to restore from |
 | sddl | show_definitions_directory_list | NOT EXPOSED | library management |
 | sll | show_libs_list | NOT EXPOSED | library catalogue |
 | spll | show_project_libs_list | NOT EXPOSED | library catalogue |
@@ -125,7 +125,7 @@ Trends:
 |---|---|---|---|
 | t | typecheck | EXPOSED | `atelierb_typecheck` |
 | b0c | b0check | EXPOSED | `atelierb_b0check` |
-| pchk | project_check | NOT EXPOSED | **high-value**: IMPORTS-graph integrity check |
+| pchk | project_check | `atelierb_project_check` | takes the main component; catches what typecheck cannot see |
 | gchk | global_project_check | NOT EXPOSED | (duplicated under "General", same command) |
 
 ## D. Machine Level: Proof Generation & Proving (9)
@@ -276,6 +276,30 @@ value not documented anywhere, or a counter-example requires a proof obligation
 already **disproved** rather than merely unproved. The tool is shipped because
 its plumbing is right, and its description says the output is passed through
 verbatim. Settling this needs the Pro documentation or a working example.
+
+### Four documented signatures that do not match the tool, measured 2026-08-19
+
+`bbatch_commands.md` describes these commands as the manual does. The installed
+CE 24.04.2 disagrees on four of them, each found by running the command:
+
+| Command | Documented | Measured |
+|---|---|---|
+| `pchk` | `project_check <name>` | needs an argument, and it is the **main component**, not the project. Returns a structural verdict, not a pass/fail of the tool |
+| `arc` | `archive <project> <tar> <whole>` | **refuses a project that is already open**, unlike every other project-level command, so it must not be preceded by `op` |
+| `m` | `make_all <action> [force]` | `action` is a **command abbreviation** (`t`, `po`, `pr`). `m 0` answers `Unknown function name: 0` |
+| `r` | `remake [force]` | matches; answers `Project already up to date` when there is nothing to do |
+
+Two commands of this batch do not work on the reference installation:
+
+- **`arc` and `res`.** Every archive attempt answered `Cannot Attach project`
+  and `Cannot access directory <bdb>/tmp`, leaving a zero-byte file, although
+  that directory exists, is writable and holds a MANIFEST. The tar path was not
+  the cause (tried short and long, forward and back slashes). Not isolated.
+- **`b2rust`.** It reports working on a component it was never given:
+  `b2rust execution started on component Files\Atelier`, which is a fragment of
+  `C:\Program Files\Atelier B ...`. The translator mis-parses its own command
+  line when the installation path contains a space. This is an Atelier B defect,
+  not a server one; the tool detects the mangled name and says so.
 
 ## Priority list for closing the gap
 

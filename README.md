@@ -19,7 +19,7 @@ Most recent first.
 
 | Date | Change |
 |------|--------|
-| 2026-08-19 | **Nine bbatch commands added**, coverage 25 % to 43 %: what is left to prove (`us` / `ug`), component metadata (`ic`), prover timeout (`to`), unprove (`u`), the external SMT provers (`xtp`, `xtr`, `xce`) and the mechanism listings (`spm` / `sppm`) |
+| 2026-08-19 | **Phase 1 closed: fifteen bbatch commands added**, coverage 25 % to 54 %. Project check, archive and restore, make-all and remake, Rust generation, plus: what is left to prove (`us` / `ug`), component metadata (`ic`), prover timeout (`to`), unprove (`u`), the external SMT provers (`xtp`, `xtr`, `xce`) and the mechanism listings (`spm` / `sppm`) |
 | 2026-08-19 | Projects created by the server now **appear in the Atelier B IDE**: `crp` does not write the workspace descriptor the IDE reads, so the server does |
 | 2026-08-13 | **Ported to the mcp 2.0 protocol**, upper version bound lifted |
 | 2026-08-06 | PMI proof files read through the sibling PO file, so proof state is attributed to the right proof obligation |
@@ -49,7 +49,8 @@ The server wraps Atelier B's `bbatch` command-line interface, translating MCP to
 | **Project Management** | `atelierb_list_projects`, `atelierb_infos_project`, `atelierb_list_components`, `atelierb_create_project`, `atelierb_remove_project`, `atelierb_add_component`, `atelierb_remove_component` |
 | **Verification** | `atelierb_typecheck`, `atelierb_b0check`, `atelierb_pogenerate`, `atelierb_prove`, `atelierb_status`, `atelierb_unproved_status`, `atelierb_infos_component`, `atelierb_proof_timeout`, `atelierb_unprove` |
 | **External provers** (NG projects) | `atelierb_list_proof_mechanisms`, `atelierb_extprove`, `atelierb_extreplay`, `atelierb_counter_example` |
-| **Code Generation** | `atelierb_generate_c`, `atelierb_generate_project_c` |
+| **Code Generation** | `atelierb_generate_c`, `atelierb_generate_project_c`, `atelierb_generate_rust` |
+| **Project Operations** | `atelierb_project_check`, `atelierb_make_all`, `atelierb_remake`, `atelierb_archive`, `atelierb_restore` |
 | **File Operations** | `atelierb_list_files`, `atelierb_read_file`, `atelierb_write_file`, `atelierb_list_project_structure` |
 
 ## Prerequisites
