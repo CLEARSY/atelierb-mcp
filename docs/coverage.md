@@ -244,7 +244,7 @@ Ranked by **user-facing value × implementation cost** for Claude-driven workflo
 |---|---|
 | `vr` / `verify_rule` | Mechanical rule verification. Pro-only confirmed 2026-05-25. |
 
-If the Pro edition is added as a secondary target later, `vr` becomes a high-value Phase 1 candidate (the mechanism feeds [P002 D01-RuleVerifier](../../D01-RuleVerifier/) if/when RuleVerifier runs on Pro). RuleVerifier's "Atelier B kernel proof" channel (per the registry) is the auto-prover, not `vr`, so RuleVerifier on CE is unaffected by this gap.
+If the Pro edition is added as a secondary target later, `vr` becomes a high-value Phase 1 candidate (the mechanism feeds D01-RuleVerifier, a separate project, if/when RuleVerifier runs on Pro). RuleVerifier's "Atelier B kernel proof" channel (per the registry) is the auto-prover, not `vr`, so RuleVerifier on CE is unaffected by this gap.
 
 ### Phase 2: medium-value (after Phase 1 lands)
 
@@ -277,7 +277,7 @@ If the Pro edition is added as a secondary target later, `vr` becomes a high-val
 
 ## Cross-project implications
 
-- **[P002 D01-RuleVerifier](../../D01-RuleVerifier/)**: `vr` (verify_rule) is Pro-only and not in scope for the CE-targeting MCP server. RuleVerifier on CE uses the auto-prover ("Atelier B kernel proof" per the registry), not `vr`, so this audit does not block RuleVerifier.
-- **[D11, Python Integration with Generated C](../../Research/MyDirections/directions.md#d11)** and Rust-generation interest needs `b2rust` exposed (Phase 1 item #10). Confirm `b2rust` exists in CE before scheduling implementation.
+- **D01-RuleVerifier** (a separate project, not part of this repository): `vr` (verify_rule) is Pro-only and not in scope for the CE-targeting MCP server. RuleVerifier on CE uses the auto-prover ("Atelier B kernel proof" per the registry), not `vr`, so this audit does not block RuleVerifier.
+- **Code generation to Python and other targets** and the Rust-generation interest need `b2rust` exposed (Phase 1 item #10). Confirm `b2rust` exists in CE before scheduling implementation.
 - **Phase-3 of this server's roadmap** (Resources facet, per `CLAUDE.md`) aligns naturally with graph commands (`dg`, `ocg`, `gpx`, `fg`, `hg`). When Phase 3 starts, prioritise graph surfaces over more bbatch tools.
-- The cross-project [atelierb_interaction_guide.md](../../docs/reference/atelierb_interaction_guide.md) does not yet cover `xtp` / `xce` / `bart`; updating it should happen in parallel with each Phase 1 tool addition. The guide should also gain an "Edition" column or note marking which commands are Pro-only.
+- The maintainer's cross-project Atelier B interaction guide, kept outside this repository, does not yet cover `xtp` / `xce` / `bart`; updating it should happen in parallel with each Phase 1 tool addition. The guide should also gain an "Edition" column or note marking which commands are Pro-only.
