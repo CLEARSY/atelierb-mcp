@@ -25,12 +25,16 @@ import pytest
 
 from atelierb_mcp.parsers import (
     extract_error_message,
+    is_not_ng_project,
     label_pmi_entries,
+    parse_component_info,
     parse_components_list,
     parse_global_status,
     parse_po_labels,
     parse_projects_list,
+    parse_proof_mechanisms,
     parse_status,
+    parse_timeout,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -116,18 +120,89 @@ class TestParseGlobalStatus:
 
 
 class TestParseStatus:
-    """Tests for parse_status function."""
+    """Tests for parse_status, against output captured from bbatch itself.
 
-    def test_parse_status(self, sample_status_output):
-        """Test parsing component status output."""
-        status = parse_status(sample_status_output)
+    The fixtures here are verbatim `bbatch` output, not hand-written samples.
+    An invented sample is what let this parser return None on every real
+    component for months while its test stayed green: it was written against a
+    format ("Status of component X", "Proof obligations : 5 / 10") that bbatch
+    never prints.
+    """
+
+    def test_parse_status(self):
+        """The `s` table: totals on the component row, groups above it."""
+        status = parse_status(read_fixture("status_probe.txt"))
 
         assert status is not None
-        assert status.name == "Machine1"
+        assert status.name == "probe"
         assert status.typecheck_ok is True
-        assert status.proved_po == 5
-        assert status.total_po == 10
-        assert status.proof_percentage == 50.0
+        assert status.po_generated is True
+
+        # Cross-checked against bbatch: NbPO 13, NbPRi 3, NbPRa 7, NbUn 3.
+        assert status.total_po == 13
+        assert status.proved_interactively == 3
+        assert status.proved_automatically == 7
+        assert status.proved_po == 10
+        assert status.unproved_po == 3
+
+        # The component's own row is the total, so it is not listed as a group.
+        assert [g.name for g in status.groups] == [
+            "AssertionLemmas",
+            "Initialisation",
+            "Operation_bump",
+            "WellDefinednessAssertions",
+        ]
+        assert sum(g.total_po for g in status.groups) == status.total_po
+
+        lemmas = next(g for g in status.groups if g.name == "AssertionLemmas")
+        assert lemmas.total_po == 3
+        assert lemmas.unproved_po == 3
+        assert lemmas.proved_po == 0
+
+    def test_parse_unproved_status_keeps_only_unproved_groups(self):
+        """`us` prints the same table, filtered to what is left to prove."""
+        status = parse_status(read_fixture("unproved_status_probe.txt"))
+
+        assert status is not None
+        assert status.name == "probe"
+        assert status.total_po == 13
+        assert status.unproved_po == 3
+        # Of the four groups, only the one with unproved POs is reported.
+        assert [g.name for g in status.groups] == ["AssertionLemmas"]
+
+    def test_parse_status_returns_none_on_unrelated_output(self):
+        """No status header means no status, rather than an empty shell."""
+        assert parse_status("Beginning interpretation ...\nEnd of interpretation") is None
+
+
+class TestParseComponentInfo:
+    """Tests for parse_component_info (the `ic` command)."""
+
+    def test_parse_component_info(self):
+        info = parse_component_info(read_fixture("infos_component_probe.txt"))
+
+        assert info == {
+            "specification": "probe",
+            "location": "C:\\Work\\B\\WK25.02\\WBProof_PmiProbe\\src/probe.mch",
+            "owner": "tl",
+        }
+
+    def test_parse_component_info_without_pairs(self):
+        assert parse_component_info("Beginning interpretation ...") is None
+
+
+class TestParseTimeout:
+    """Tests for parse_timeout (the `to` command)."""
+
+    def test_parse_timeout_reads_no_limit(self):
+        """0 is the shipped default and means no limit at all."""
+        assert parse_timeout(read_fixture("timeout.txt")) == 0
+
+    def test_parse_timeout_reads_a_value(self):
+        assert parse_timeout("Proof Timeout Value is 45 seconds") == 45
+
+    def test_parse_timeout_absent(self):
+        assert parse_timeout("Beginning interpretation ...") is None
 
 
 class TestExtractErrorMessage:
@@ -290,3 +365,74 @@ class TestPmiPoPairing:
         )
         po = "THEORY ProofList\nEND\n&\nTHEORY Formulas\nEND\n"
         assert label_pmi_entries(pmi, po) == []
+
+
+class TestParseProofMechanisms:
+    """Tests for parse_proof_mechanisms (`spm` and `sppm`)."""
+
+    def test_installation_mechanisms(self):
+        """`spm` lists what Atelier B ships, 15 solvers on CE 24.04.2."""
+        mechanisms = parse_proof_mechanisms(read_fixture("proof_mechanisms.txt"))
+
+        assert len(mechanisms) == 15
+        assert "z3_pp" in mechanisms
+        assert "altergo" in mechanisms
+        assert "cvc5_simple" in mechanisms
+        # The header and footer lines must not leak into the list.
+        assert not any("mechanism" in m.lower() for m in mechanisms)
+
+    def test_project_mechanisms_are_a_subset(self):
+        """`sppm` lists what one project enabled, which is usually far fewer."""
+        enabled = parse_proof_mechanisms(read_fixture("project_mechanisms_ng.txt"))
+        installed = parse_proof_mechanisms(read_fixture("proof_mechanisms.txt"))
+
+        assert enabled == ["z3_pp", "z3_simple"]
+        assert set(enabled) < set(installed)
+
+    def test_refusal_yields_no_mechanisms(self):
+        """A project that is not NG answers with a refusal, not a list."""
+        assert parse_proof_mechanisms(read_fixture("project_mechanisms_not_ng.txt")) == []
+
+
+class TestIsNotNgProject:
+    """Tests for the NG-mode refusal detector."""
+
+    def test_detects_the_refusal(self):
+        """The external-prover commands all refuse with this one sentence."""
+        assert is_not_ng_project(read_fixture("project_mechanisms_not_ng.txt")) is True
+
+    def test_ignores_a_normal_answer(self):
+        assert is_not_ng_project(read_fixture("project_mechanisms_ng.txt")) is False
+
+
+class TestParseStatusNgTable:
+    """The NG status table carries three columns the Compatible one does not.
+
+    Compatible: NbPO | NbPRi | NbPRa | NbUn | %Pr
+    NG:         NbPO | NbPRi | NbPRa | NbPRm | NbUnr | NbDis | NbUn | %Pr
+
+    Counting columns by position reads NbPRm where NbUn is meant, so every NG
+    project reports zero unproved. That is exactly the kind of project the
+    external provers are used on, so the parser reads the header instead.
+    """
+
+    def test_ng_table_reports_the_real_unproved_count(self):
+        status = parse_status(read_fixture("status_ng_unproved.txt"))
+
+        assert status is not None
+        assert status.name == "ngfalse"
+        assert status.total_po == 1
+        # bbatch itself reports "Unproved 1" for this component.
+        assert status.unproved_po == 1
+        assert status.proved_po == 0
+        assert status.proved_by_mechanism == 0
+        assert status.disproved == 0
+
+    def test_compatible_table_has_no_mechanism_columns(self):
+        """The absent columns read as zero rather than shifting the others."""
+        status = parse_status(read_fixture("status_probe.txt"))
+
+        assert status.unproved_po == 3
+        assert status.proved_by_mechanism == 0
+        assert status.unreliably_proved == 0
+        assert status.disproved == 0

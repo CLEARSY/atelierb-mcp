@@ -18,8 +18,73 @@
 
 """Proof-related MCP tools for Atelier B."""
 
+from pathlib import Path
+
 from ..bbatch_wrapper import bbatch
-from ..parsers import extract_error_message, parse_global_status, parse_status
+from ..parsers import (
+    extract_error_message,
+    parse_metrics,
+    parse_version,
+    is_not_ng_project,
+    parse_component_info,
+    parse_global_status,
+    parse_proof_mechanisms,
+    parse_status,
+    parse_timeout,
+)
+
+# The external-prover commands only run on a project migrated to NG mode. The
+# bare bbatch message says nothing about the way out, so spell it here once.
+_NG_HINT = (
+    "This project is not in NG mode, which the external proof mechanisms require. "
+    "Migrating it is done with the bbatch command `mip` and is IRREVERSIBLE: proof "
+    "statuses move from .pmi to .pos files. Saved interactive proofs survive and can "
+    "be replayed with atelierb_prove at force -2, but back up the project's bdp/ "
+    "directory first. This server deliberately does not migrate projects on its own."
+)
+
+
+def _ng_guard(result, project_name: str, **extra) -> dict | None:
+    """Return a helpful error payload when bbatch refused for lack of NG mode."""
+    if not is_not_ng_project(result.output):
+        return None
+    return {
+        "success": False,
+        "error": f"Project '{project_name}' is not in NG mode.",
+        "hint": _NG_HINT,
+        "project": project_name,
+        "raw_output": result.output,
+        **extra,
+    }
+
+
+def _status_payload(status) -> dict:
+    """Shared shape for the status dictionaries, groups included."""
+    return {
+        "typecheck_ok": status.typecheck_ok,
+        "po_generated": status.po_generated,
+        "total_po": status.total_po,
+        "proved_po": status.proved_po,
+        "unproved_po": status.unproved_po,
+        "proved_interactively": status.proved_interactively,
+        "proved_automatically": status.proved_automatically,
+        # NG projects only; zero elsewhere because the columns do not exist.
+        "proved_by_mechanism": status.proved_by_mechanism,
+        "unreliably_proved": status.unreliably_proved,
+        "disproved": status.disproved,
+        "proof_percentage": status.proof_percentage,
+        "groups": [
+            {
+                "name": g.name,
+                "total_po": g.total_po,
+                "proved_po": g.proved_po,
+                "unproved_po": g.unproved_po,
+                "proved_interactively": g.proved_interactively,
+                "proved_automatically": g.proved_automatically,
+            }
+            for g in status.groups
+        ],
+    }
 
 
 async def atelierb_typecheck(project_name: str, component_name: str) -> dict:
@@ -129,7 +194,10 @@ async def atelierb_pogenerate(
 
 
 async def atelierb_prove(
-    project_name: str, component_name: str, force: int = 0
+    project_name: str,
+    component_name: str,
+    force: int = 0,
+    timeout_seconds: int | None = None,
 ) -> dict:
     """Run automatic prover on a B component.
 
@@ -141,11 +209,21 @@ async def atelierb_prove(
             - 10, 11, 12, 13: Same as 0-3 but forced
             - -1: Fast
             - -2: Replay
+        timeout_seconds: Per-proof-obligation time limit, 0 for none. Omit to
+            keep the configured default, which `atelierb_proof_timeout` reports.
+            The setting is session-scoped in bbatch, so it is issued here rather
+            than through a separate call, which would have no effect.
 
     Returns:
         Dictionary with proof result and 'success' status.
     """
-    result = await bbatch.prove(project_name, component_name, force)
+    if timeout_seconds is not None and timeout_seconds < 0:
+        return {
+            "success": False,
+            "error": f"Timeout must be zero or positive, got {timeout_seconds}",
+        }
+
+    result = await bbatch.prove(project_name, component_name, force, timeout_seconds)
 
     if not result.success:
         error = extract_error_message(result.output) or result.error
@@ -163,6 +241,7 @@ async def atelierb_prove(
         "project": project_name,
         "component": component_name,
         "force": force,
+        "timeout_seconds": timeout_seconds,
         "raw_output": result.output,
     }
 
@@ -195,14 +274,7 @@ async def atelierb_status(project_name: str, component_name: str | None = None) 
             "success": True,
             "project": project_name,
             "component": component_name,
-            "status": {
-                "typecheck_ok": status.typecheck_ok if status else None,
-                "po_generated": status.po_generated if status else None,
-                "total_po": status.total_po if status else 0,
-                "proved_po": status.proved_po if status else 0,
-                "unproved_po": status.unproved_po if status else 0,
-                "proof_percentage": status.proof_percentage if status else None,
-            } if status else None,
+            "status": _status_payload(status) if status else None,
             "raw_output": result.output,
         }
     else:
@@ -239,3 +311,726 @@ async def atelierb_status(project_name: str, component_name: str | None = None) 
             },
             "raw_output": result.output,
         }
+
+
+async def atelierb_unproved_status(
+    project_name: str, component_name: str | None = None
+) -> dict:
+    """Report what is left to prove, filtering out everything already proved.
+
+    Wraps `us` for a single component and `ug` for the whole project. It answers
+    "what is left to prove?" directly, where `atelierb_status` returns
+    everything and leaves the filtering to the caller.
+
+    Args:
+        project_name: Name of the project.
+        component_name: Name of the component. When omitted, every component of
+            the project that still has unproved proof obligations is reported.
+
+    Returns:
+        Dictionary with the unproved breakdown and 'success' status.
+    """
+    if component_name:
+        result = await bbatch.unproved_status(project_name, component_name)
+
+        if not result.success:
+            error = extract_error_message(result.output) or result.error
+            return {
+                "success": False,
+                "error": error or f"Failed to get unproved status for '{component_name}'",
+                "project": project_name,
+                "component": component_name,
+                "raw_output": result.output,
+            }
+
+        status = parse_status(result.output)
+        return {
+            "success": True,
+            "project": project_name,
+            "component": component_name,
+            # Only the groups that still carry unproved POs are listed by `us`.
+            "unproved": _status_payload(status) if status else None,
+            "raw_output": result.output,
+        }
+
+    result = await bbatch.unproved_global(project_name)
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"Failed to get unproved status for '{project_name}'",
+            "project": project_name,
+            "raw_output": result.output,
+        }
+
+    statuses = parse_global_status(result.output)
+    unproved = [s for s in statuses if s.unproved_po > 0]
+    return {
+        "success": True,
+        "project": project_name,
+        "components": [
+            {
+                "name": s.name,
+                "total_po": s.total_po,
+                "proved_po": s.proved_po,
+                "unproved_po": s.unproved_po,
+                "proof_percentage": s.proof_percentage,
+            }
+            for s in unproved
+        ],
+        "summary": {
+            "components_with_unproved": len(unproved),
+            "total_unproved": sum(s.unproved_po for s in unproved),
+        },
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_infos_component(project_name: str, component_name: str) -> dict:
+    """Get the metadata of a component: kind, source location, owner.
+
+    Complements `atelierb_status`, which reports proof progress but not where
+    the component lives or what it is.
+
+    Args:
+        project_name: Name of the project.
+        component_name: Name of the component.
+
+    Returns:
+        Dictionary with the component metadata and 'success' status.
+    """
+    result = await bbatch.infos_component(project_name, component_name)
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"Failed to get information for '{component_name}'",
+            "project": project_name,
+            "component": component_name,
+            "raw_output": result.output,
+        }
+
+    info = parse_component_info(result.output)
+    return {
+        "success": True,
+        "project": project_name,
+        "component": component_name,
+        "info": info,
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_proof_timeout() -> dict:
+    """Read the configured timeout of the automatic prover, in seconds.
+
+    Read-only by design. `to N` only holds for the bbatch session that issues
+    it, and the server starts a fresh session for every command, so a setter
+    exposed here would report success and change nothing at all. To actually
+    bound a proof, pass `timeout_seconds` to `atelierb_prove`, which issues the
+    setting in the same session as the proof.
+
+    Returns:
+        Dictionary with the timeout value and 'success' status. 0 means the
+        prover runs without any time limit.
+    """
+    result = await bbatch.proof_timeout()
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or "Failed to read the proof timeout",
+            "raw_output": result.output,
+        }
+
+    value = parse_timeout(result.output)
+    return {
+        "success": True,
+        "timeout_seconds": value,
+        "no_timeout": value == 0,
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_list_proof_mechanisms(project_name: str | None = None) -> dict:
+    """List the external proof mechanisms available.
+
+    Without a project name, lists what Atelier B ships (`spm`). With one, lists
+    what that project has enabled (`sppm`), which is the set atelierb_extprove
+    will accept: a mechanism installed but not enabled on the project cannot be
+    used there.
+
+    Args:
+        project_name: Project to inspect. Omit for the installation-wide list.
+
+    Returns:
+        Dictionary with the mechanism names and 'success' status.
+    """
+    if project_name is None:
+        result = await bbatch.proof_mechanisms()
+        scope = "installation"
+    else:
+        result = await bbatch.project_proof_mechanisms(project_name)
+        scope = "project"
+        refused = _ng_guard(result, project_name)
+        if refused:
+            return refused
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or "Failed to list proof mechanisms",
+            "raw_output": result.output,
+        }
+
+    mechanisms = parse_proof_mechanisms(result.output)
+    return {
+        "success": True,
+        "scope": scope,
+        "project": project_name,
+        "mechanisms": mechanisms,
+        "count": len(mechanisms),
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_unprove(project_name: str, component_name: str) -> dict:
+    """Discard the proof state of a component, sending every PO back to unproved.
+
+    Destructive and not undoable from here. Interactive proof scripts saved with
+    the interactive prover survive and can be replayed with atelierb_prove at
+    force -2, but automatic verdicts are lost, and on an NG project this also
+    clears the verdicts external mechanisms wrote in the .pos file. Take an
+    archive first if the proof state matters.
+
+    Args:
+        project_name: Name of the project.
+        component_name: Name of the component to unprove.
+
+    Returns:
+        Dictionary with the outcome and 'success' status.
+    """
+    result = await bbatch.unprove(project_name, component_name)
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"Failed to unprove '{component_name}'",
+            "project": project_name,
+            "component": component_name,
+            "raw_output": result.output,
+        }
+
+    return {
+        "success": True,
+        "project": project_name,
+        "component": component_name,
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_extprove(
+    project_name: str,
+    component_name: str,
+    mechanism: str,
+    fast_only: bool = False,
+) -> dict:
+    """Submit a component's unproved POs to an external prover (SMT solver).
+
+    Only proof obligations that are still unproved are submitted, so this is the
+    natural follow-up to atelierb_prove rather than a replacement.
+
+    Requires a project migrated to NG mode, with the mechanism enabled on it and
+    its binary wired in the project resource file. Calling
+    atelierb_list_proof_mechanisms with a project name reports what is usable there.
+
+    Args:
+        project_name: Name of the project.
+        component_name: Name of the component.
+        mechanism: Mechanism name, validated against the project's enabled list.
+        fast_only: Use only the mechanism's fast drivers rather than all of them.
+            This selects drivers, not which proof obligations are submitted.
+
+    Returns:
+        Dictionary with the proof outcome and 'success' status.
+    """
+    # Validate against the project rather than against a list frozen in the
+    # schema: what is usable depends on the installation and on the project.
+    available = await atelierb_list_proof_mechanisms(project_name)
+    if not available["success"]:
+        return available
+
+    if mechanism not in available["mechanisms"]:
+        return {
+            "success": False,
+            "error": f"Mechanism '{mechanism}' is not enabled on project '{project_name}'.",
+            "available_mechanisms": available["mechanisms"],
+            "hint": (
+                "Enable it on the project with the bbatch command `apm <mechanism>`, "
+                "and check its binary is wired in the project's bdp/AtelierB resource "
+                "file. atelierb_list_proof_mechanisms without a project name lists "
+                "everything the installation ships."
+            ),
+            "project": project_name,
+            "component": component_name,
+        }
+
+    result = await bbatch.extprove(project_name, component_name, mechanism, fast_only)
+
+    refused = _ng_guard(result, project_name, component=component_name)
+    if refused:
+        return refused
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"External proof failed for '{component_name}'",
+            "project": project_name,
+            "component": component_name,
+            "mechanism": mechanism,
+            "raw_output": result.output,
+        }
+
+    return {
+        "success": True,
+        "project": project_name,
+        "component": component_name,
+        "mechanism": mechanism,
+        "fast_only": fast_only,
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_extreplay(
+    project_name: str, component_name: str, mechanism: str | None = None
+) -> dict:
+    """Replay the external proofs already recorded for a component.
+
+    Re-runs the mechanisms on the proof obligations they discharged before,
+    which is how an external verdict is checked again after the model changed.
+
+    Args:
+        project_name: Name of the project.
+        component_name: Name of the component.
+        mechanism: Restrict the replay to one mechanism. Omit to replay all.
+
+    Returns:
+        Dictionary with the replay outcome and 'success' status.
+    """
+    result = await bbatch.extreplay(project_name, component_name, mechanism)
+
+    refused = _ng_guard(result, project_name, component=component_name)
+    if refused:
+        return refused
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"External replay failed for '{component_name}'",
+            "project": project_name,
+            "component": component_name,
+            "mechanism": mechanism,
+            "raw_output": result.output,
+        }
+
+    return {
+        "success": True,
+        "project": project_name,
+        "component": component_name,
+        "mechanism": mechanism,
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_counter_example(
+    project_name: str,
+    component_name: str,
+    po: str,
+    mechanism: str,
+    driver: str,
+) -> dict:
+    """Ask an external mechanism for a counter-example on one proof obligation.
+
+    When a proof obligation resists, a counter-example says why: it exhibits a
+    valuation satisfying the hypotheses and falsifying the goal, which usually
+    points straight at a missing invariant or guard.
+
+    Requires an NG project with the mechanism enabled, as atelierb_extprove does.
+
+    NOT CONFIRMED. Tried on a deliberately false assertion with z3, this printed
+    the same report as an ordinary external proof and no counter-example, for
+    every `driver` value attempted. Either the argument takes a value documented
+    nowhere, or a counter-example needs a proof obligation already disproved
+    rather than merely unproved. The raw bbatch output is passed through
+    untouched so the caller can judge what came back.
+
+    Args:
+        project_name: Name of the project.
+        component_name: Name of the component.
+        po: The proof obligation, written Operation.index, for instance
+            Operation_clear.5. Reading the component's .pmi through
+            atelierb_read_file reports the labels.
+        mechanism: Mechanism name, as reported by atelierb_list_proof_mechanisms.
+        driver: Driver of that mechanism to run.
+
+    Returns:
+        Dictionary with the counter-example output and 'success' status.
+    """
+    result = await bbatch.counter_example(
+        project_name, component_name, po, mechanism, driver
+    )
+
+    refused = _ng_guard(result, project_name, component=component_name, po=po)
+    if refused:
+        return refused
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"No counter-example obtained for '{po}'",
+            "project": project_name,
+            "component": component_name,
+            "po": po,
+            "mechanism": mechanism,
+            "driver": driver,
+            "raw_output": result.output,
+        }
+
+    return {
+        "success": True,
+        "project": project_name,
+        "component": component_name,
+        "po": po,
+        "mechanism": mechanism,
+        "driver": driver,
+        "raw_output": result.output,
+    }
+
+
+_ARCHIVE_SCOPES = {"sources": 0, "all": 1, "sources_and_proofs": 2}
+
+
+async def atelierb_project_check(project_name: str, main_component: str) -> dict:
+    """Check the structural integrity of a project's IMPORTS graph.
+
+    Catches what typecheck cannot see, because typecheck looks at one component
+    at a time: a machine seen but never imported, a missing main component, a
+    broken link in the architecture. Worth running before a full proof campaign.
+
+    Args:
+        project_name: Name of the project.
+        main_component: The component at the top of the IMPORTS graph.
+
+    Returns:
+        Dictionary with the checker verdict and 'success' status. A failed check
+        is a real answer about the project, not a tool error, so the findings are
+        in raw_output either way.
+    """
+    result = await bbatch.project_check(project_name, main_component)
+    passed = "Project Checking failed" not in result.output
+
+    return {
+        "success": True,
+        "project": project_name,
+        "main_component": main_component,
+        "check_passed": passed,
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_archive(
+    project_name: str, archive_path: str, scope: str = "sources_and_proofs"
+) -> dict:
+    """Archive a project into a tar file.
+
+    The natural companion of atelierb_unprove and of any risky proof attempt:
+    take a snapshot first, restore if the attempt goes wrong.
+
+    NOT CONFIRMED on the reference installation. Every attempt answered
+    `Cannot Attach project` and `Cannot access directory <bdb>/tmp`, leaving a
+    zero-byte file, although that directory exists and is writable. The cause was
+    not isolated. The plumbing is here and the raw output is passed through.
+
+    Args:
+        project_name: Name of the project to archive.
+        archive_path: Path of the tar file to write.
+        scope: What to include: "sources", "all", or "sources_and_proofs".
+
+    Returns:
+        Dictionary with the archive outcome and 'success' status.
+    """
+    if scope not in _ARCHIVE_SCOPES:
+        return {
+            "success": False,
+            "error": f"Unknown scope '{scope}'.",
+            "valid_scopes": sorted(_ARCHIVE_SCOPES),
+        }
+
+    result = await bbatch.archive(project_name, archive_path, _ARCHIVE_SCOPES[scope])
+    failed = "Cannot" in result.output
+
+    if not result.success or failed:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"Failed to archive '{project_name}'",
+            "project": project_name,
+            "archive_path": archive_path,
+            "raw_output": result.output,
+        }
+
+    return {
+        "success": True,
+        "project": project_name,
+        "archive_path": archive_path,
+        "scope": scope,
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_restore(
+    archive_path: str, project_name: str, project_path: str | None = None
+) -> dict:
+    """Restore a project from a tar archive.
+
+    Writes to disk. Refuses when a project of that name already exists, rather
+    than overwriting work: remove it first if that is really the intent.
+
+    NOT CONFIRMED, for the same reason as atelierb_archive: no archive could be
+    produced on the reference installation to restore from.
+
+    Args:
+        archive_path: Path of the tar archive to read.
+        project_name: Name to give the restored project.
+        project_path: Where to put the project directory. Defaults to the
+            workspace.
+
+    Returns:
+        Dictionary with the restore outcome and 'success' status.
+    """
+    from ..config import settings
+
+    target = Path(project_path) if project_path else Path(settings.workspace) / project_name
+    if target.exists():
+        return {
+            "success": False,
+            "error": (
+                f"'{target}' already exists. Restoring would write over it, so "
+                f"remove it first if that is what you want."
+            ),
+            "project": project_name,
+        }
+
+    result = await bbatch.restore(archive_path, project_name, project_path)
+
+    if not result.success or "Cannot" in result.output:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"Failed to restore '{project_name}'",
+            "project": project_name,
+            "archive_path": archive_path,
+            "raw_output": result.output,
+        }
+
+    return {
+        "success": True,
+        "project": project_name,
+        "archive_path": archive_path,
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_make_all(
+    project_name: str, action: str, force: int | None = None
+) -> dict:
+    """Run one action over every component of a project.
+
+    The one-shot way to bring a project forward: typecheck everything, generate
+    every proof obligation, or prove the lot, without naming components.
+
+    Args:
+        project_name: Name of the project.
+        action: A bbatch command abbreviation, `t` to typecheck, `po` to generate
+            proof obligations, `pr` to prove. A number is refused.
+        force: Proof force, when the action is a proof.
+
+    Returns:
+        Dictionary with the outcome and 'success' status.
+    """
+    result = await bbatch.make_all(project_name, action, force)
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"make_all '{action}' failed on '{project_name}'",
+            "project": project_name,
+            "action": action,
+            "raw_output": result.output,
+        }
+
+    return {
+        "success": True,
+        "project": project_name,
+        "action": action,
+        "force": force,
+        "already_up_to_date": "already up to date" in result.output.lower(),
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_remake(project_name: str, force: int | None = None) -> dict:
+    """Bring a whole project up to date, redoing whatever is stale.
+
+    Args:
+        project_name: Name of the project.
+        force: Proof force to use for the proof stage.
+
+    Returns:
+        Dictionary with the outcome and 'success' status.
+    """
+    result = await bbatch.remake(project_name, force)
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"Failed to remake '{project_name}'",
+            "project": project_name,
+            "raw_output": result.output,
+        }
+
+    return {
+        "success": True,
+        "project": project_name,
+        "force": force,
+        "already_up_to_date": "already up to date" in result.output.lower(),
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_generate_rust(project_name: str, component_name: str) -> dict:
+    """Generate Rust code for an implementation and its dependencies.
+
+    The Rust counterpart of atelierb_generate_c. Same prerequisite: the
+    implementation must pass atelierb_b0check first.
+
+    KNOWN DEFECT, in Atelier B rather than here: when the installation path
+    contains a space, which the default "C:/Program Files/Atelier B ..." does,
+    the translator mis-parses its own command line and reports working on a
+    component named after a fragment of that path ("Files\\Atelier"), then fails.
+    Installing Atelier B under a path without spaces is the only workaround
+    found.
+
+    Args:
+        project_name: Name of the project.
+        component_name: The implementation to translate.
+
+    Returns:
+        Dictionary with the translation outcome and 'success' status.
+    """
+    result = await bbatch.translate_to_rust(project_name, component_name)
+    failed = "error" in result.output.lower()
+
+    if not result.success or failed:
+        error = extract_error_message(result.output) or result.error
+        payload = {
+            "success": False,
+            "error": error or f"Rust generation failed for '{component_name}'",
+            "project": project_name,
+            "component": component_name,
+            "raw_output": result.output,
+        }
+        # The mangled component name is the signature of the space-in-path bug.
+        if "execution started on component" in result.output and component_name not in result.output.split("execution started on component")[1][:40]:
+            payload["hint"] = (
+                "The translator reports a component name it was never given, which "
+                "is the signature of the space-in-path defect: Atelier B installed "
+                "under a directory containing a space mis-parses its own command "
+                "line. Reinstalling under a path without spaces is the only "
+                "workaround found."
+            )
+        return payload
+
+    return {
+        "success": True,
+        "project": project_name,
+        "component": component_name,
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_version() -> dict:
+    """Report the Atelier B version, edition, and its resource settings.
+
+    Useful as a first diagnostic when something behaves unexpectedly, and the
+    only readable place for several settings: the resources say where the
+    external solvers and ProB are wired, and where the project database lives.
+
+    Returns:
+        Dictionary with the version, the edition, the B compiler version, and
+        the full resource mapping.
+    """
+    result = await bbatch.get_version()
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or "Failed to read the Atelier B version",
+            "raw_output": result.output,
+        }
+
+    info = parse_version(result.output)
+    if info is None:
+        return {
+            "success": False,
+            "error": "Could not find a version line in the output",
+            "raw_output": result.output,
+        }
+
+    return {"success": True, **info, "raw_output": result.output}
+
+
+async def atelierb_metrics(project_name: str) -> dict:
+    """Detailed proof metrics for a whole project.
+
+    Splits the proof results finer than atelierb_status: separate counts for
+    what an external mechanism discharged and what Atelier B's own prover did,
+    plus the unreliable and disproved verdicts. One row per component and a
+    total.
+
+    Project-wide by design: the underlying command ignores a component name.
+
+    Args:
+        project_name: Name of the project.
+
+    Returns:
+        Dictionary with per-component metrics and the project total.
+    """
+    result = await bbatch.metrics(project_name)
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"Failed to read metrics for '{project_name}'",
+            "project": project_name,
+            "raw_output": result.output,
+        }
+
+    metrics = parse_metrics(result.output)
+    return {
+        "success": True,
+        "project": project_name,
+        **metrics,
+        "raw_output": result.output,
+    }

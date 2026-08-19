@@ -32,15 +32,15 @@ changes.
 | | Count |
 |---|---|
 | **bbatch commands documented** | 81 |
-| **MCP tools registered** | 18 |
-| **bbatch commands exposed** as their own MCP tool | 14 |
+| **MCP tools registered** | 32 |
+| **bbatch commands exposed** as their own MCP tool | 30 |
 | bbatch commands handled **internally** by the wrapper (not their own tool) | 2 (`op`, `clp`) |
 | MCP tools that don't wrap a bbatch command (filesystem helpers) | 4 |
 | bbatch commands **out of scope** (interactive editor / legacy format / printer / subprocess lifecycle) | 22 |
 | bbatch commands **Pro-only** (not in Community Edition; out of scope while server targets CE) | 1+ (confirmed: `vr`; others TBC) |
-| bbatch commands **not exposed** but in scope on CE (the actual gap to close) | **42** |
+| bbatch commands **not exposed** but in scope on CE (the actual gap to close) | **26** |
 
-**Coverage of in-scope CE bbatch commands**: 14 / (14 + 42) = **25.0 %**.
+**Coverage of in-scope CE bbatch commands**: 30 / (30 + 26) = **53.6 %**. Phase 1 is closed.
 
 Trends:
 
@@ -79,9 +79,9 @@ Trends:
 | pwd | print_working_directory | OUT OF SCOPE | filesystem nav |
 | q | quit | OUT OF SCOPE | subprocess lifecycle handled by wrapper |
 | rs | restore_source | NOT EXPOSED | component-level restore from archive |
-| spm | show_proof_mechanisms | NOT EXPOSED | useful for listing what's available before `xtp` |
+| spm | show_proof_mechanisms | `atelierb_list_proof_mechanisms` | without a project name |
 | srb | show_rules_base | OUT OF SCOPE | interactive editor |
-| v | version_print | NOT EXPOSED | quick win; useful for server diagnostics |
+| v | version_print | `atelierb_version` | version, edition and the resource settings |
 
 ## B. Project Level Commands (31)
 
@@ -92,11 +92,11 @@ Trends:
 | apm | add_proof_mechanism | NOT EXPOSED | configure provers per project |
 | apr | add_project_reader | NOT EXPOSED | access control; low priority for MCP |
 | apu | add_project_user | NOT EXPOSED | access control; low priority for MCP |
-| arc | archive | NOT EXPOSED | **high-value**: snapshot before risky proofs |
+| arc | archive | `atelierb_archive` | **not confirmed**: answers `Cannot Attach project` here. Refuses an open project, unlike every other project command |
 | crp | create_project | EXPOSED | `atelierb_create_project` |
 | crpm | create_project_manifest | NOT EXPOSED | manifest-driven project creation |
 | epr | edit_project_res | OUT OF SCOPE | interactive editor |
-| xtm | extmetrics | NOT EXPOSED | proof metrics; useful for status dashboards |
+| xtm | extmetrics | `atelierb_metrics` | project-wide; answers `arg <name> not used` to a component name |
 | glfa | get_list_from_archive | NOT EXPOSED | inspect archive before restore |
 | gchk | global_project_check | NOT EXPOSED | **high-value**: full-project pre-flight |
 | ip | infos_project | EXPOSED | `atelierb_infos_project` |
@@ -110,11 +110,11 @@ Trends:
 | rpl | remove_project_lib | NOT EXPOSED | library management |
 | rpm | remove_proof_mechanism | NOT EXPOSED | per-project prover unconfig |
 | rpu | remove_project_user | NOT EXPOSED | access control |
-| res | restore | NOT EXPOSED | **high-value**: paired with `arc` for checkpoint/restore |
+| res | restore | `atelierb_restore` | **not confirmed**, no archive could be produced to restore from |
 | sddl | show_definitions_directory_list | NOT EXPOSED | library management |
 | sll | show_libs_list | NOT EXPOSED | library catalogue |
 | spll | show_project_libs_list | NOT EXPOSED | library catalogue |
-| sppm | show_project_proof_mechanisms | NOT EXPOSED | useful before `xtp` |
+| sppm | show_project_proof_mechanisms | `atelierb_list_proof_mechanisms` | with a project name; promoted from Phase 2 because `xtp` validates against it |
 | sprl | show_project_readers_list | NOT EXPOSED | access control |
 | spul | show_project_users_list | NOT EXPOSED | access control |
 | spl | show_projects_list | EXPOSED | `atelierb_list_projects` |
@@ -125,7 +125,7 @@ Trends:
 |---|---|---|---|
 | t | typecheck | EXPOSED | `atelierb_typecheck` |
 | b0c | b0check | EXPOSED | `atelierb_b0check` |
-| pchk | project_check | NOT EXPOSED | **high-value**: IMPORTS-graph integrity check |
+| pchk | project_check | `atelierb_project_check` | takes the main component; catches what typecheck cannot see |
 | gchk | global_project_check | NOT EXPOSED | (duplicated under "General", same command) |
 
 ## D. Machine Level: Proof Generation & Proving (9)
@@ -134,12 +134,12 @@ Trends:
 |---|---|---|---|
 | po | pogenerate | EXPOSED | `atelierb_pogenerate` |
 | pr | prove | EXPOSED | `atelierb_prove` |
-| xtp | extprove | NOT EXPOSED | **high-value**: external mechanisms (mlSMT, mlproof, ...) |
-| xtr | extreplay | NOT EXPOSED | replay external proof; paired with `xtp` |
-| xce | extcounter_example | NOT EXPOSED | **highest-value**: counter-example for failed PO |
+| xtp | extprove | `atelierb_extprove` | NG projects only; mechanism validated against the project |
+| xtr | extreplay | `atelierb_extreplay` | NG projects only |
+| xce | extcounter_example | `atelierb_counter_example` | NG projects only. **Exposed but not confirmed**: on a false assertion it printed the same report as `xtp` and no counter-example, whatever the `driver` value. See the caveat below. |
 | vr | verify_rule | PRO-ONLY | mechanical rule verification; **not in Community Edition**; out of scope while server targets CE |
-| u | unprove | NOT EXPOSED | **high-value**: reset to redo proofs |
-| to | timeout | NOT EXPOSED | set/get proof timeout |
+| u | unprove | `atelierb_unprove` | destructive; interactive proofs survive and replay with force -2 |
+| to | timeout | `atelierb_proof_timeout` (read) + `timeout_seconds` on `atelierb_prove` | read-only as a tool: `to N` is scoped to one bbatch session, so setting it standalone changes nothing |
 | co | concurrency | NOT EXPOSED | set proof concurrency threads |
 
 ## E. Machine Level: Status & Information (7)
@@ -148,9 +148,9 @@ Trends:
 |---|---|---|---|
 | s | status | EXPOSED | `atelierb_status` (with component name) |
 | sg | status_global | EXPOSED | `atelierb_status` (without component name) |
-| us | unproved_status | NOT EXPOSED | **high-value**: filter to what's still to prove |
-| ug | unproved_global | NOT EXPOSED | **high-value**: global unproved view |
-| ic | infos_component | NOT EXPOSED | component PO landscape; complement to `status` |
+| us | unproved_status | `atelierb_unproved_status` | with a component name |
+| ug | unproved_global | `atelierb_unproved_status` | without a component name |
+| ic | infos_component | `atelierb_infos_component` | kind, source location, owner |
 | sml | show_machines_list | EXPOSED | `atelierb_list_components` |
 | ps | project_status | NOT EXPOSED | project graph; overlaps with graph commands below |
 
@@ -161,7 +161,7 @@ Trends:
 | b2c | ComenCtrans | EXPOSED | `atelierb_generate_c` |
 | b2c_old | ComenCOldtrans | NOT EXPOSED | legacy translator; low priority |
 | p2c | ComenCtransall | EXPOSED | `atelierb_generate_project_c` |
-| b2rust | Rusttrans | NOT EXPOSED | **high-value**: Rust output (D11 / future code-gen work) |
+| b2rust | Rusttrans | `atelierb_generate_rust` | **defective upstream**: mis-parses its command line when the install path contains a space |
 | dge | data_generation | NOT EXPOSED | ProB-based data generation (D03 / D08 cross-link) |
 
 ## G. Machine Level: Component Management (7)
@@ -216,8 +216,111 @@ protocol (see CLAUDE.md, Phase 3).
 
 | Abbrev | Command | Status | Rationale |
 |---|---|---|---|
-| m | make_all | NOT EXPOSED | **high-value**: one-shot project workflow (typecheck → POG → prove all) |
-| r | remake | NOT EXPOSED | **high-value**: remake all |
+| m | make_all | `atelierb_make_all` | action is a command abbreviation (`t`, `po`, `pr`), not a number |
+| r | remake | `atelierb_remake` | answers `Project already up to date` when there is nothing to do |
+
+## Edition availability, measured 2026-08-19
+
+The Phase 1 entries below used to carry "CE availability: TBC", which blocked
+them. Measured against the installed Community Edition 24.04.2:
+
+- `help` lists **96 commands**, including all 14 of the Phase 1 list.
+- `spm` reports **15 installed proof mechanisms**: `altergo`, `cvc4_ddrp1_pp`,
+  `cvc4_pp`, `cvc4_simple`, `cvc5_ddrp1_pp`, `cvc5_pp`, `cvc5_simple`,
+  `iprover_pp`, `smtlib_simple`, `smtpp_rp0`, `smtpp_rp1`, `vampire_pp`,
+  `z3_ddrp1_pp`, `z3_pp`, `z3_simple`. So `xtp` and `xce` have real drivers.
+- `v` shows `ATB*B2RUST*Configuration_Directory` and `ATB*BART*RefinerFile`, so
+  Rust generation and BART really ship in CE.
+
+**All four TBC flags therefore resolve to available.**
+
+One caveat, and it is the 2026-05-25 lesson restated: **appearing in `help` does
+not mean a command works**. `vr` is listed too, yet it is Pro-only, confirmed by
+the maintainer. Presence in `help` is necessary, never sufficient; only running
+the command settles it.
+
+## NG mode gates the external provers, measured 2026-08-19
+
+`xtp`, `xtr`, `xce`, `apm` and `sppm` all answer `The project mode is not NG.`
+unless the project has been migrated. Three consequences worth knowing before
+using this part of the surface:
+
+- **Migration is `mip`, and it is irreversible**: proof statuses move from
+  `.pmi` to `.pos`. Saved interactive proofs survive and replay with
+  `atelierb_prove` at force -2. This server never migrates a project on its
+  own; the tools return the reason and the way out instead.
+- **Installed is not enabled.** The installation ships 15 mechanisms, and a
+  given project typically enables one or two (`BProofPatterns`: `z3_pp`,
+  `z3_simple`). `atelierb_extprove` validates against the project's list, not
+  against the installation's, and reports the valid names on error.
+- **The solver binary is wired per project**, through `ATB*Proof*<NAME>` in
+  `bdp/AtelierB`, next to `ATB*ATB*Project_Mode_NG: TRUE` which is where the
+  mode itself is recorded.
+
+`xtp` only submits proof obligations that are still unproved. Its third
+argument selects the drivers (all, or fast only), not the scope. To measure a
+solver over a whole component, `atelierb_unprove` first.
+
+### `xce` is exposed but its behaviour is not confirmed
+
+Exercised on a purpose-built NG project with a plainly false assertion
+(`ASSERTIONS 2 + 2 = 5`), z3 wired and `z3_pp` enabled. `xce` returned the same
+report as `xtp` (`Proving ... with external mechanism z3_pp`, `still 1 unproved
+PO`) and no counter-example, for every `driver` value tried, including the
+mechanism name itself. The proof obligation stayed `Unproved` rather than
+becoming `Disproved`, which is what `Third_Party_Provers_Manual` section 2.3
+leads one to expect from an SMT mechanism on a false goal.
+
+Two readings are open and were not separated: the `driver` argument needs a
+value not documented anywhere, or a counter-example requires a proof obligation
+already **disproved** rather than merely unproved. The tool is shipped because
+its plumbing is right, and its description says the output is passed through
+verbatim. Settling this needs the Pro documentation or a working example.
+
+### Four documented signatures that do not match the tool, measured 2026-08-19
+
+`bbatch_commands.md` describes these commands as the manual does. The installed
+CE 24.04.2 disagrees on four of them, each found by running the command:
+
+| Command | Documented | Measured |
+|---|---|---|
+| `pchk` | `project_check <name>` | needs an argument, and it is the **main component**, not the project. Returns a structural verdict, not a pass/fail of the tool |
+| `arc` | `archive <project> <tar> <whole>` | **refuses a project that is already open**, unlike every other project-level command, so it must not be preceded by `op` |
+| `m` | `make_all <action> [force]` | `action` is a **command abbreviation** (`t`, `po`, `pr`). `m 0` answers `Unknown function name: 0` |
+| `r` | `remake [force]` | matches; answers `Project already up to date` when there is nothing to do |
+
+Two commands of this batch do not work on the reference installation:
+
+- **`arc` and `res`.** Every archive attempt answered `Cannot Attach project`
+  and `Cannot access directory <bdb>/tmp`, leaving a zero-byte file, although
+  that directory exists, is writable and holds a MANIFEST. Neither the tar path
+  nor a space in the database directory is the cause: rebuilding the workspace
+  under `C:\Work\B	estbdb`, with no space anywhere, and pointing bbatch at it
+  with `-r=`, reproduces the failure exactly. The cause was not isolated here.
+  **Archiving is being reworked upstream** (a new mode archives a project with
+  its dependencies and recreates the workspace needed to host it), so these two
+  tools are expected to start working on a future Atelier B release and are
+  shipped ready for it.
+- **`b2rust`.** It reports working on a component it was never given:
+  `b2rust execution started on component Files\Atelier`, which is a fragment of
+  `C:\Program Files\Atelier B ...`. The translator mis-parses its own command
+  line when the installation path contains a space. This is an Atelier B defect,
+  not a server one; the tool detects the mangled name and says so.
+
+### bbatch needs HOME, and answers wrongly without it
+
+Found while adding `xtm`. bbatch has Unix heritage and reads `HOME` to locate
+its user settings. Without it, it does not fail: **it answers wrongly**. `xtm`
+reports `The project mode is not NG.` for a project that is in Compatible mode,
+and nothing distinguishes that from a real refusal.
+
+This matters because a client may start the server with a trimmed environment,
+and the MCP SDK's own default environment is trimmed: it passes `USERPROFILE`
+and `APPDATA` but not `HOME`. Measured by bisection over the 74 variables the
+default set drops, `HOME` alone accounts for the difference.
+
+The server now fills `HOME` in from `USERPROFILE` when the parent did not pass
+it, so the answer no longer depends on how the server was started.
 
 ## Priority list for closing the gap
 
@@ -227,16 +330,16 @@ Ranked by **user-facing value × implementation cost** for Claude-driven workflo
 
 | # | Command(s) | Proposed MCP tool name | Why |
 |---|---|---|---|
-| 1 | `xce` | `atelierb_counter_example` | When a PO fails, this is the single most useful next step. Today the user sees "fail" without diagnostic content. **CE availability: TBC for the underlying mechanism drivers.** |
-| 2 | `us` / `ug` | `atelierb_unproved_status` (with optional component name) | "What's left to prove?" is the most asked question during a proof session. Today the user has to filter `atelierb_status` themselves. |
-| 3 | `xtp` / `xtr` | `atelierb_extprove`, `atelierb_extreplay` | Apply external proof mechanisms (mlSMT, ...) before manual interactive proof. Often closes hard POs auto. **CE availability: TBC, depends on which proof mechanisms ship with CE.** |
-| 4 | `u` | `atelierb_unprove` | Reset proof state to redo. Today the user has to delete `.pmi` files manually. |
+| 1 | `xce` | `atelierb_counter_example` | **DONE 2026-08-19.** When a PO fails, this is the single most useful next step. Today the user sees "fail" without diagnostic content. CE availability confirmed 2026-08-19: 15 mechanisms installed. |
+| 2 | `us` / `ug` | `atelierb_unproved_status` (with optional component name) | **DONE 2026-08-19.** "What's left to prove?" is the most asked question during a proof session. |
+| 3 | `xtp` / `xtr` | `atelierb_extprove`, `atelierb_extreplay` | **DONE 2026-08-19.** Apply external proof mechanisms (mlSMT, ...) before manual interactive proof. Often closes hard POs auto. CE availability confirmed 2026-08-19: 15 mechanisms installed. |
+| 4 | `u` | `atelierb_unprove` | **DONE 2026-08-19.** Reset proof state to redo. Today the user has to delete `.pmi` files manually. |
 | 5 | `m` / `r` | `atelierb_make_all`, `atelierb_remake` | One-shot "typecheck + POG + prove all" for project bootstrapping. |
 | 6 | `pchk` | `atelierb_project_check` | IMPORTS-graph integrity. Catches structural issues `typecheck` misses. |
 | 7 | `arc` / `res` | `atelierb_archive`, `atelierb_restore` | Snapshot before risky proof attempts; restore on backtrack. Pairs naturally with `unprove`. |
-| 8 | `to` | `atelierb_proof_timeout` | Get / set proof timeout. Heavily used in any non-trivial proof session: bump timeout when a PO is hard, drop it for fast sweep. Promoted from Phase 2 after `vr` was found Pro-only. |
-| 9 | `ic` | `atelierb_infos_component` | Component-level metadata complementing `status`. |
-| 10 | `b2rust` | `atelierb_generate_rust` | Rust code generation; future D11 work needs this surface. **CE availability: TBC.** |
+| 8 | `to` | `atelierb_proof_timeout` (read) + `timeout_seconds` on `atelierb_prove` | **DONE 2026-08-19.** Measured: `to N` holds only for the bbatch session that issues it, and the server starts one per command, so a standalone setter would report success and change nothing. The value travels with the proof instead. |
+| 9 | `ic` | `atelierb_infos_component` | **DONE 2026-08-19.** Kind, source location and owner, complementing `status`. |
+| 10 | `b2rust` | `atelierb_generate_rust` | Rust code generation; future D11 work needs this surface. CE availability confirmed 2026-08-19. |
 
 ### Pro-only (will not be exposed while server targets CE)
 
@@ -256,7 +359,7 @@ If the Pro edition is added as a secondary target later, `vr` becomes a high-val
 | 14 | `spm` / `sppm` | `atelierb_proof_mechanisms`, `atelierb_project_proof_mechanisms` | List available + per-project provers. Useful sidecar to `xtp`. |
 | 15 | `dg` / `ocg` / `gpx` | `atelierb_dep_graph`, `atelierb_op_call_graph`, `atelierb_xref` | Architectural visualisation; natural Phase-3 Resources material. |
 | 16 | `v` | `atelierb_version` | Diagnostic; one-line wrapper. Quick win. |
-| 17 | `bart` | `atelierb_bart` | Auto-refinement; medium-complexity wrapper (BART is interactive in places). **CE availability: TBC.** |
+| 17 | `bart` | `atelierb_bart` | Auto-refinement; medium-complexity wrapper (BART is interactive in places). CE availability confirmed 2026-08-19. |
 
 ### Phase 3: lower-value / niche
 

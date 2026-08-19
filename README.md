@@ -9,6 +9,22 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that c
 
 This server enables Claude to directly interact with Atelier B projects: typechecking components, generating proof obligations, running the automatic prover, generating C code, and managing project files.
 
+> **Works with Atelier B Community Edition 24.04.2** (`ATELIER B (Community Edition) version 24.04.2`, B Compiler `version/24.08`), which is the version every tool is developed and tested against. Other 24.x releases are expected to work, since the server drives `bbatch` through its documented command names, but they are not tested. Commands available only in the Professional edition, `vr` (`verify_rule`) among them, are deliberately not exposed; see [docs/coverage.md](docs/coverage.md).
+>
+> Also requires **Python 3.11+** and **mcp 2.0+**.
+
+## History
+
+Most recent first.
+
+| Date | Change |
+|------|--------|
+| 2026-08-19 | **Phase 1 closed: fifteen bbatch commands added**, coverage 25 % to 54 %. Project check, archive and restore, make-all and remake, Rust generation, plus: what is left to prove (`us` / `ug`), component metadata (`ic`), prover timeout (`to`), unprove (`u`), the external SMT provers (`xtp`, `xtr`, `xce`) and the mechanism listings (`spm` / `sppm`) |
+| 2026-08-19 | Projects created by the server now **appear in the workspace you browse**. Atelier B can hold several workspaces, each being a directory of `<project>.desc` descriptors; `crp` registers a new project in the default workspace only, so the server also writes the descriptor into the one `ATELIERB_WORKSPACE` points at |
+| 2026-08-13 | **Ported to the mcp 2.0 protocol**, upper version bound lifted |
+| 2026-08-06 | PMI proof files read through the sibling PO file, so proof state is attributed to the right proof obligation |
+| 2026-08-06 | B sources moved to `src/`, out of the translation directory |
+
 ## Architecture
 
 ```
@@ -31,14 +47,17 @@ The server wraps Atelier B's `bbatch` command-line interface, translating MCP to
 | Category | Tools |
 |----------|-------|
 | **Project Management** | `atelierb_list_projects`, `atelierb_infos_project`, `atelierb_list_components`, `atelierb_create_project`, `atelierb_remove_project`, `atelierb_add_component`, `atelierb_remove_component` |
-| **Verification** | `atelierb_typecheck`, `atelierb_b0check`, `atelierb_pogenerate`, `atelierb_prove`, `atelierb_status` |
-| **Code Generation** | `atelierb_generate_c`, `atelierb_generate_project_c` |
+| **Verification** | `atelierb_typecheck`, `atelierb_b0check`, `atelierb_pogenerate`, `atelierb_prove`, `atelierb_status`, `atelierb_unproved_status`, `atelierb_infos_component`, `atelierb_proof_timeout`, `atelierb_unprove` |
+| **External provers** (NG projects) | `atelierb_list_proof_mechanisms`, `atelierb_extprove`, `atelierb_extreplay`, `atelierb_counter_example` |
+| **Code Generation** | `atelierb_generate_c`, `atelierb_generate_project_c`, `atelierb_generate_rust` |
+| **Project Operations** | `atelierb_project_check`, `atelierb_make_all`, `atelierb_remake`, `atelierb_archive`, `atelierb_restore` |
+| **Diagnostics** | `atelierb_version`, `atelierb_metrics` |
 | **File Operations** | `atelierb_list_files`, `atelierb_read_file`, `atelierb_write_file`, `atelierb_list_project_structure` |
 
 ## Prerequisites
 
 - **Python 3.11+**
-- **Atelier B** (Community Edition or Professional) with `bbatch.exe`
+- **Atelier B Community Edition 24.04.2** with `bbatch.exe` (the tested version; see the note at the top)
 - **Claude Desktop** (or any MCP-compatible client)
 
 ## Installation

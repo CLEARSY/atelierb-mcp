@@ -42,6 +42,35 @@ class ComponentInfo:
 
 
 @dataclass
+class ProofGroup:
+    """Per-group proof counters, one row of the `s` / `us` status table.
+
+    A group is a proof-obligation family of the component, such as
+    `AssertionLemmas`, `Initialisation` or `Operation_foo`.
+    """
+
+    name: str
+    total_po: int = 0
+    proved_interactively: int = 0
+    proved_automatically: int = 0
+    unproved_po: int = 0
+    percentage: int = 0
+    # NG projects report three more counters, absent in Compatible mode.
+    proved_by_mechanism: int = 0
+    unreliably_proved: int = 0
+    disproved: int = 0
+
+    @property
+    def proved_po(self) -> int:
+        """Proved by any route that counts as a proof."""
+        return (
+            self.proved_interactively
+            + self.proved_automatically
+            + self.proved_by_mechanism
+        )
+
+
+@dataclass
 class ComponentStatus:
     """Detailed status of a component."""
 
@@ -51,6 +80,12 @@ class ComponentStatus:
     total_po: int = 0
     proved_po: int = 0
     unproved_po: int = 0
+    proved_interactively: int = 0
+    proved_automatically: int = 0
+    proved_by_mechanism: int = 0
+    unreliably_proved: int = 0
+    disproved: int = 0
+    groups: list["ProofGroup"] = field(default_factory=list)
 
     @property
     def proof_percentage(self) -> float:
@@ -142,8 +177,50 @@ def parse_components_list(output: str) -> list[ComponentInfo]:
     return components
 
 
+# The status table does not always have the same columns. A Compatible-mode
+# project prints
+#     |                 | NbPO | NbPRi | NbPRa | NbUn | %Pr |
+# while an NG project adds the external-mechanism counters
+#     |       | NbPO | NbPRi | NbPRa | NbPRm | NbUnr | NbDis | NbUn | %Pr |
+# so the columns are read from the header rather than counted by position.
+# Reading NbUn positionally reports zero unproved on every NG project, which is
+# exactly where the external provers are used.
+_STATUS_HEADER = re.compile(r"\|\s*\|\s*NbPO\s*\|(.+?)\|\s*%Pr\s*\|")
+_STATUS_FIELDS = {
+    "NbPO": "total_po",
+    "NbPRi": "proved_interactively",
+    "NbPRa": "proved_automatically",
+    "NbPRm": "proved_by_mechanism",
+    "NbUnr": "unreliably_proved",
+    "NbDis": "disproved",
+    "NbUn": "unproved_po",
+}
+
+
+def _status_columns(output: str) -> list[str] | None:
+    """Column names of the status table, read off its header row."""
+    match = _STATUS_HEADER.search(output)
+    if not match:
+        return None
+    middle = [c.strip() for c in match.group(1).split("|") if c.strip()]
+    return ["NbPO", *middle, "%Pr"]
+
+
+def _status_rows(output: str, columns: list[str]):
+    """Yield (name, {column: value}) for each data row of the status table."""
+    cells = r"\|\s*(\d+)\s*" * len(columns)
+    row = re.compile(r"\|\s*(\S+)\s*" + cells + r"\|")
+    for match in row.finditer(output):
+        values = dict(zip(columns, (int(v) for v in match.groups()[1:])))
+        yield match.group(1), values
+
+
 def parse_status(output: str) -> ComponentStatus | None:
-    """Parse the output of status (s) command.
+    """Parse the output of status (s) or unproved_status (us).
+
+    Both commands print the same table, `us` listing only the groups that still
+    have unproved proof obligations. The last row repeats the component name and
+    carries the totals; the rows above it are the per-group counters.
 
     Args:
         output: Raw bbatch output.
@@ -151,27 +228,41 @@ def parse_status(output: str) -> ComponentStatus | None:
     Returns:
         ComponentStatus object or None if parsing fails.
     """
-    status = ComponentStatus(name="")
+    name_match = re.search(
+        r"Printing the status of\s+(\S+)", output, re.IGNORECASE
+    )
+    if not name_match:
+        return None
+    name = name_match.group(1)
 
-    # Look for component name
-    name_match = re.search(r"Status of component\s+(\w+)", output, re.IGNORECASE)
-    if name_match:
-        status.name = name_match.group(1)
+    status = ComponentStatus(name=name)
 
-    # Look for typecheck status
-    if re.search(r"typecheck.*ok|tc.*ok|checked", output, re.IGNORECASE):
+    # "probe POGenerated C:\...\probe.mch" states what has been done so far.
+    if re.search(rf"^\s*{re.escape(name)}\s+POGenerated", output, re.IGNORECASE | re.MULTILINE):
+        status.po_generated = True
+        status.typecheck_ok = True  # POG only runs on a typechecked component
+    elif re.search(rf"^\s*{re.escape(name)}\s+TypeChecked", output, re.IGNORECASE | re.MULTILINE):
         status.typecheck_ok = True
 
-    # Look for PO counts
-    # Common patterns: "X / Y proved", "X proved out of Y", etc.
-    po_match = re.search(r"(\d+)\s*/\s*(\d+)", output)
-    if po_match:
-        status.proved_po = int(po_match.group(1))
-        status.total_po = int(po_match.group(2))
-        status.unproved_po = status.total_po - status.proved_po
-        status.po_generated = True
+    columns = _status_columns(output)
+    if columns is None:
+        return status
 
-    return status if status.name else None
+    for row_name, values in _status_rows(output, columns):
+        group = ProofGroup(name=row_name, percentage=values.get("%Pr", 0))
+        for column, attribute in _STATUS_FIELDS.items():
+            if column in values:
+                setattr(group, attribute, values[column])
+
+        if group.name == name:
+            # The row repeating the component name carries the totals.
+            for attribute in _STATUS_FIELDS.values():
+                setattr(status, attribute, getattr(group, attribute))
+            status.proved_po = group.proved_po
+        else:
+            status.groups.append(group)
+
+    return status
 
 
 def parse_global_status(output: str) -> list[ComponentStatus]:
@@ -216,6 +307,171 @@ def parse_global_status(output: str) -> list[ComponentStatus]:
         statuses.append(status)
 
     return statuses
+
+
+def parse_proof_mechanisms(output: str) -> list[str]:
+    """Extract the mechanism names listed by `spm` or `sppm`.
+
+    Both print a header, one indented name per line, then a closing line::
+
+        Available proof mechanisms...
+              z3_pp
+              z3_simple
+        End of proof mechanisms
+
+    Args:
+        output: Raw bbatch output.
+
+    Returns:
+        The mechanism names, in the order listed. Empty when the project has
+        none enabled, which is a legitimate answer rather than a failure.
+    """
+    mechanisms = []
+    collecting = False
+    for line in output.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if "proof mechanisms" in stripped.lower():
+            # "Available proof mechanisms..." opens, "End of ..." closes.
+            collecting = not stripped.lower().startswith("end")
+            continue
+        if collecting:
+            mechanisms.append(stripped)
+
+    return mechanisms
+
+
+def is_not_ng_project(output: str) -> bool:
+    """Tell whether bbatch refused because the project is not in NG mode.
+
+    The external-prover commands (`xtp`, `xtr`, `xce`) and the mechanism
+    commands (`apm`, `sppm`) only work on a project migrated to NG mode, and
+    answer `The project mode is not NG.` otherwise. That message is worth
+    recognising: on its own it says nothing about what to do next.
+    """
+    return "project mode is not ng" in output.lower()
+
+
+def parse_version(output: str) -> dict | None:
+    """Parse the output of version_print (v).
+
+    The command prints the edition and version on one line, then a long dump of
+    the resource settings, one `NAME: value` pair per line. Those resources are
+    the only readable place for several project-level facts, so they are kept
+    rather than discarded.
+
+    Args:
+        output: Raw bbatch output.
+
+    Returns:
+        Dictionary with `version`, `edition` and the `resources` mapping, or
+        None when the version line is absent.
+    """
+    match = re.search(
+        r"ATELIER B(?:\s*\(([^)]+)\))?\s*version\s*(\S+?)\s*:", output, re.IGNORECASE
+    )
+    if not match:
+        return None
+
+    resources = {}
+    for name, value in re.findall(r"^\s*(ATB\*[\w*]+)\s*:\s*(.*?)\s*$", output, re.MULTILINE):
+        resources[name] = value
+
+    compiler = re.search(r"B Compiler version\s+(\S+)", output)
+
+    return {
+        "edition": match.group(1) or "unknown",
+        "version": match.group(2),
+        "b_compiler": compiler.group(1) if compiler else None,
+        "resources": resources,
+    }
+
+
+# The metrics table of `xtm`, one row per component plus a TOTAL row:
+#   | Component | Po | Pr | Unr | Dis | Unp | Ext | ATB |
+#   |     probe | 13 | 10 |   0 |   0 |   3 |   0 |  10 |
+_METRICS_ROW = re.compile(
+    r"\|\s*(\S+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|"
+    r"\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|"
+)
+
+
+def parse_metrics(output: str) -> dict:
+    """Parse the output of extmetrics (xtm).
+
+    Unlike the status commands, `xtm` is project-wide and ignores a component
+    argument, answering `arg <name> not used`. Its columns split the proof
+    results finer than `status` does: `Ext` counts what an external mechanism
+    discharged and `ATB` what Atelier B's own prover did.
+
+    Args:
+        output: Raw bbatch output.
+
+    Returns:
+        Dictionary with a `components` list and the `total` row, both empty when
+        no table is present.
+    """
+    components, total = [], None
+    for row in _METRICS_ROW.finditer(output):
+        entry = {
+            "name": row.group(1),
+            "total_po": int(row.group(2)),
+            "proved": int(row.group(3)),
+            "unreliably_proved": int(row.group(4)),
+            "disproved": int(row.group(5)),
+            "unproved": int(row.group(6)),
+            "proved_externally": int(row.group(7)),
+            "proved_by_atelierb": int(row.group(8)),
+        }
+        if entry["name"].upper() == "TOTAL":
+            total = entry
+        else:
+            components.append(entry)
+
+    return {"components": components, "total": total}
+
+
+def parse_component_info(output: str) -> dict | None:
+    """Parse the output of infos_component (ic).
+
+    The command prints one `KEY --> value` pair per line::
+
+        SPECIFICATION  --> probe
+        LOCATION       --> C:\\Work\\B\\WK25.02\\WBProof_PmiProbe\\src/probe.mch
+        OWNER          --> tl
+
+    Keys vary with the component: a refinement or implementation adds its own
+    lines, so the parser keeps whatever it finds rather than expecting a fixed
+    set. Keys are lowercased so callers get stable field names.
+
+    Args:
+        output: Raw bbatch output.
+
+    Returns:
+        Dictionary of the pairs found, or None if the output has none.
+    """
+    info = {}
+    for key, value in re.findall(r"^\s*([A-Z][A-Z_ ]*?)\s*-->\s*(.+?)\s*$", output, re.MULTILINE):
+        info[key.strip().lower().replace(" ", "_")] = value.strip()
+
+    return info or None
+
+
+def parse_timeout(output: str) -> int | None:
+    """Parse the output of timeout (to).
+
+    Reads `Proof Timeout Value is 0 (no timeout)`, where the value is in
+    seconds and 0 means no limit.
+
+    Args:
+        output: Raw bbatch output.
+
+    Returns:
+        The timeout in seconds, or None if the line is absent.
+    """
+    match = re.search(r"Proof\s+Timeout\s+Value\s+is\s+(\d+)", output, re.IGNORECASE)
+    return int(match.group(1)) if match else None
 
 
 def parse_project_info(output: str) -> ProjectInfo | None:

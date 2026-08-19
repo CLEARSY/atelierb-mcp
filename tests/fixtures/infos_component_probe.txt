@@ -1,0 +1,6 @@
+Beginning interpretation ...
+SPECIFICATION  --> probe
+LOCATION       --> C:\Work\B\WK25.02\WBProof_PmiProbe\src/probe.mch
+OWNER          --> tl
+
+End of interpretation (3 lines)

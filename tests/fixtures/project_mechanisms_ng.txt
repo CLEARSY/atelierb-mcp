@@ -1,0 +1,10 @@
+Beginning interpretation ...
+
+Proof mechanisms available in project BProofPatterns...
+
+      z3_pp
+      z3_simple
+
+End of project proof mechanisms
+
+End of interpretation (3 lines)

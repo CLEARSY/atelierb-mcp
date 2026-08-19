@@ -20,12 +20,33 @@
 
 import asyncio
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
 from .config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _bbatch_env() -> dict[str, str]:
+    """Environment for the bbatch subprocess, with HOME guaranteed.
+
+    bbatch has Unix heritage and reads HOME to find its user settings. Without
+    it, it does not fail: it answers wrongly. `xtm` reports `The project mode is
+    not NG.` for a project that is in Compatible mode, and a caller has no way
+    to tell that apart from a real answer.
+
+    A client that starts this server with a trimmed environment gets exactly
+    that, and the MCP SDK's own default environment is trimmed. So HOME is
+    filled in from USERPROFILE when the parent process did not pass it.
+    """
+    env = dict(os.environ)
+    if not env.get("HOME"):
+        fallback = env.get("USERPROFILE") or str(Path.home())
+        if fallback:
+            env["HOME"] = fallback
+    return env
 
 
 @dataclass
@@ -82,6 +103,7 @@ class BbatchWrapper:
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_bbatch_env(),
             )
 
             stdout, stderr = await asyncio.wait_for(
@@ -176,15 +198,135 @@ class BbatchWrapper:
         option = "1" if differential else "0"
         return await self.execute_with_project(project, f"po {component} {option}")
 
-    async def prove(self, project: str, component: str, force: int = 0) -> BbatchResult:
+    async def prove(
+        self,
+        project: str,
+        component: str,
+        force: int = 0,
+        timeout: int | None = None,
+    ) -> BbatchResult:
         """Run automatic prover on a component.
 
         Args:
             project: Project name.
             component: Component name.
             force: Proof force level (0-3 auto, 10-13 forced, -1 fast, -2 replay).
+            timeout: Per-proof-obligation timeout in seconds, 0 for no limit.
+                Issued as `to` in the same session, just before `pr`: the setting
+                is session-scoped, so it has to travel with the proof itself.
         """
-        return await self.execute_with_project(project, f"pr {component} {force}")
+        commands = [] if timeout is None else [f"to {timeout}"]
+        commands.append(f"pr {component} {force}")
+        return await self.execute_with_project(project, commands)
+
+    async def unproved_status(self, project: str, component: str) -> BbatchResult:
+        """Status of a component, listing only the groups with unproved POs."""
+        return await self.execute_with_project(project, f"us {component}")
+
+    async def unproved_global(self, project: str) -> BbatchResult:
+        """Status of every component of the project that still has unproved POs."""
+        return await self.execute_with_project(project, "ug")
+
+    async def metrics(self, project: str) -> BbatchResult:
+        """Detailed proof metrics for a project (`xtm`).
+
+        Project-wide: `xtm` answers `arg <name> not used` to a component name.
+        """
+        return await self.execute_with_project(project, "xtm")
+
+    async def project_check(self, project: str, main_component: str) -> BbatchResult:
+        """Run the Project Checker on the IMPORTS graph, from a main component."""
+        return await self.execute_with_project(project, f"pchk {main_component}")
+
+    async def archive(self, project: str, archive_path: str, scope: int) -> BbatchResult:
+        """Archive a project to a tar file.
+
+        `arc` refuses a project that is already open, unlike every other
+        project-level command, so this one does not go through
+        `execute_with_project`.
+        """
+        return await self.execute(f"arc {project} {archive_path} {scope}")
+
+    async def restore(
+        self, archive_path: str, project: str, project_path: str | None = None
+    ) -> BbatchResult:
+        """Restore a project from a tar archive. Also refuses an open project."""
+        command = f"res {archive_path} {project}"
+        if project_path:
+            command += f" {project_path}"
+        return await self.execute(command)
+
+    async def make_all(
+        self, project: str, action: str, force: int | None = None
+    ) -> BbatchResult:
+        """Run one action over every component of the project.
+
+        `action` is a bbatch command abbreviation (`t`, `po`, `pr`), not a
+        number: `m 0` answers `Unknown function name: 0`.
+        """
+        command = f"m {action}" if force is None else f"m {action} {force}"
+        return await self.execute_with_project(project, command)
+
+    async def remake(self, project: str, force: int | None = None) -> BbatchResult:
+        """Bring the whole project up to date."""
+        command = "r" if force is None else f"r {force}"
+        return await self.execute_with_project(project, command)
+
+    async def translate_to_rust(self, project: str, component: str) -> BbatchResult:
+        """Generate Rust for an implementation and its dependencies."""
+        return await self.execute_with_project(project, f"b2rust {component}")
+
+    async def unprove(self, project: str, component: str) -> BbatchResult:
+        """Discard the proof state of a component, sending every PO back to unproved."""
+        return await self.execute_with_project(project, f"u {component}")
+
+    async def proof_mechanisms(self) -> BbatchResult:
+        """List the proof mechanisms installed with Atelier B (`spm`)."""
+        return await self.execute("spm")
+
+    async def project_proof_mechanisms(self, project: str) -> BbatchResult:
+        """List the proof mechanisms enabled on a project (`sppm`, NG projects only)."""
+        return await self.execute_with_project(project, "sppm")
+
+    async def extprove(
+        self, project: str, component: str, mechanism: str, fast_only: bool = False
+    ) -> BbatchResult:
+        """Submit the component's unproved POs to an external mechanism.
+
+        The third argument of `xtp` selects the drivers, not the scope: 0 uses
+        every driver of the mechanism, 1 only the fast ones. Either way only
+        unproved proof obligations are submitted.
+        """
+        option = "1" if fast_only else "0"
+        return await self.execute_with_project(
+            project, f"xtp {component} {mechanism} {option}"
+        )
+
+    async def extreplay(
+        self, project: str, component: str, mechanism: str | None = None
+    ) -> BbatchResult:
+        """Replay the external proofs already recorded for a component."""
+        command = f"xtr {component}" if mechanism is None else f"xtr {component} {mechanism}"
+        return await self.execute_with_project(project, command)
+
+    async def counter_example(
+        self, project: str, component: str, po: str, mechanism: str, driver: str
+    ) -> BbatchResult:
+        """Ask an external mechanism for a counter-example on one proof obligation."""
+        return await self.execute_with_project(
+            project, f"xce {component} {po} {mechanism} {driver}"
+        )
+
+    async def proof_timeout(self) -> BbatchResult:
+        """Read the configured proof timeout (0 = no limit).
+
+        General command, no open project needed. Read-only on purpose: `to N`
+        only holds for the bbatch session that issues it, and this wrapper
+        starts a fresh session per call, so a standalone setter would report
+        success and change nothing. Pass `timeout` to `prove()` instead, which
+        sets it in the same session as the proof.
+        """
+        return await self.execute("to")
 
     async def status(self, project: str, component: str) -> BbatchResult:
         """Get status of a component."""

@@ -1,0 +1,3 @@
+Beginning interpretation ...
+The project mode is not NG.
+Interpretation aborted at line 2

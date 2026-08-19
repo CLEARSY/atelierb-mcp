@@ -28,22 +28,38 @@ from mcp.types import CallToolResult, ListToolsResult, TextContent, Tool
 from .config import settings
 from .tools import (
     atelierb_add_component,
+    atelierb_archive,
     atelierb_b0check,
+    atelierb_counter_example,
     atelierb_create_project,
+    atelierb_extprove,
+    atelierb_extreplay,
     atelierb_generate_c,
     atelierb_generate_project_c,
+    atelierb_generate_rust,
+    atelierb_infos_component,
     atelierb_infos_project,
     atelierb_list_components,
     atelierb_list_files,
+    atelierb_list_proof_mechanisms,
     atelierb_list_project_structure,
     atelierb_list_projects,
+    atelierb_make_all,
+    atelierb_metrics,
     atelierb_pogenerate,
+    atelierb_proof_timeout,
+    atelierb_project_check,
     atelierb_prove,
     atelierb_read_file,
+    atelierb_remake,
     atelierb_remove_component,
     atelierb_remove_project,
+    atelierb_restore,
     atelierb_status,
     atelierb_typecheck,
+    atelierb_version,
+    atelierb_unprove,
+    atelierb_unproved_status,
     atelierb_write_file,
 )
 
@@ -169,6 +185,15 @@ async def list_tools(ctx, params) -> ListToolsResult:
                         "description": "Proof force level (0-3 auto, 10-13 forced, -1 fast, -2 replay)",
                         "default": 0,
                     },
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "description": (
+                            "Per-proof-obligation time limit in seconds, 0 for none. "
+                            "Omit to keep the configured default. Raise it on a hard "
+                            "proof obligation, lower it to keep a broad sweep fast."
+                        ),
+                        "minimum": 0,
+                    },
                 },
                 "required": ["project_name", "component_name"],
             },
@@ -187,6 +212,383 @@ async def list_tools(ctx, params) -> ListToolsResult:
                         "type": "string",
                         "description": "Name of the component (optional, omit for global status)",
                     },
+                },
+                "required": ["project_name"],
+            },
+        ),
+        Tool(
+            name="atelierb_unproved_status",
+            description=(
+                "Report what is left to prove, hiding everything already proved. "
+                "With a component, lists the proof-obligation groups that still have "
+                "unproved POs; without one, lists every component of the project that "
+                "still has unproved POs. Use this rather than atelierb_status when the "
+                "question is 'what remains?'."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {
+                        "type": "string",
+                        "description": "Name of the project",
+                    },
+                    "component_name": {
+                        "type": "string",
+                        "description": (
+                            "Name of the component (optional, omit to scan the whole project)"
+                        ),
+                    },
+                },
+                "required": ["project_name"],
+            },
+        ),
+        Tool(
+            name="atelierb_infos_component",
+            description=(
+                "Get the metadata of a component: its kind, the path of its source "
+                "file, and its owner. Complements atelierb_status, which reports proof "
+                "progress but not where the component lives."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {
+                        "type": "string",
+                        "description": "Name of the project",
+                    },
+                    "component_name": {
+                        "type": "string",
+                        "description": "Name of the component",
+                    },
+                },
+                "required": ["project_name", "component_name"],
+            },
+        ),
+        Tool(
+            name="atelierb_proof_timeout",
+            description=(
+                "Read the configured timeout of the automatic prover, in seconds, "
+                "0 meaning no limit. Read-only: the timeout is scoped to a single "
+                "bbatch session, so to actually bound a proof pass timeout_seconds to "
+                "atelierb_prove instead."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        ),
+        Tool(
+            name="atelierb_list_proof_mechanisms",
+            description=(
+                "List the external proof mechanisms (SMT solvers and friends). Without "
+                "a project name, lists what the Atelier B installation ships; with one, "
+                "lists what that project has enabled, which is what atelierb_extprove "
+                "will accept there. A mechanism can be installed yet not enabled on a "
+                "given project."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {
+                        "type": "string",
+                        "description": (
+                            "Project to inspect. Omit for the installation-wide list."
+                        ),
+                    },
+                },
+                "required": [],
+            },
+        ),
+        Tool(
+            name="atelierb_unprove",
+            description=(
+                "Discard the proof state of a component, sending every proof obligation "
+                "back to unproved. DESTRUCTIVE and not undoable from here: automatic "
+                "verdicts are lost, and on an NG project the verdicts written by external "
+                "mechanisms are cleared too. Interactive proof scripts survive and can be "
+                "replayed with atelierb_prove at force -2. Use it to redo a proof from "
+                "scratch or to measure a prover on a whole component."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {
+                        "type": "string",
+                        "description": "Name of the project",
+                    },
+                    "component_name": {
+                        "type": "string",
+                        "description": "Name of the component to unprove",
+                    },
+                },
+                "required": ["project_name", "component_name"],
+            },
+        ),
+        Tool(
+            name="atelierb_extprove",
+            description=(
+                "Submit a component's still-unproved proof obligations to an external "
+                "prover such as an SMT solver. Natural follow-up to atelierb_prove, not a "
+                "replacement: already-proved obligations are not resubmitted. Requires a "
+                "project in NG mode with the mechanism enabled; the tool checks the "
+                "mechanism against the project and lists the valid ones on error."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {
+                        "type": "string",
+                        "description": "Name of the project",
+                    },
+                    "component_name": {
+                        "type": "string",
+                        "description": "Name of the component",
+                    },
+                    "mechanism": {
+                        "type": "string",
+                        "description": (
+                            "Mechanism name, as reported by atelierb_list_proof_mechanisms "
+                            "for this project (for example z3_pp)"
+                        ),
+                    },
+                    "fast_only": {
+                        "type": "boolean",
+                        "description": (
+                            "Use only the mechanism's fast drivers rather than all of "
+                            "them. This selects drivers, not which proof obligations are "
+                            "submitted."
+                        ),
+                        "default": False,
+                    },
+                },
+                "required": ["project_name", "component_name", "mechanism"],
+            },
+        ),
+        Tool(
+            name="atelierb_extreplay",
+            description=(
+                "Replay the external proofs already recorded for a component, which is "
+                "how an external verdict is checked again after the model changed. "
+                "Requires a project in NG mode."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {
+                        "type": "string",
+                        "description": "Name of the project",
+                    },
+                    "component_name": {
+                        "type": "string",
+                        "description": "Name of the component",
+                    },
+                    "mechanism": {
+                        "type": "string",
+                        "description": (
+                            "Restrict the replay to one mechanism. Omit to replay all."
+                        ),
+                    },
+                },
+                "required": ["project_name", "component_name"],
+            },
+        ),
+        Tool(
+            name="atelierb_counter_example",
+            description=(
+                "Ask an external mechanism for a counter-example on one proof obligation. "
+                "When a proof obligation resists, this exhibits a valuation that satisfies "
+                "the hypotheses and falsifies the goal, which usually points straight at a "
+                "missing invariant or guard. Requires a project in NG mode with the "
+                "mechanism enabled."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {
+                        "type": "string",
+                        "description": "Name of the project",
+                    },
+                    "component_name": {
+                        "type": "string",
+                        "description": "Name of the component",
+                    },
+                    "po": {
+                        "type": "string",
+                        "description": (
+                            "The proof obligation, written Operation.index, for example "
+                            "Operation_clear.5"
+                        ),
+                    },
+                    "mechanism": {
+                        "type": "string",
+                        "description": "Mechanism name, as reported by atelierb_list_proof_mechanisms",
+                    },
+                    "driver": {
+                        "type": "string",
+                        "description": "Driver of that mechanism to run",
+                    },
+                },
+                "required": [
+                    "project_name",
+                    "component_name",
+                    "po",
+                    "mechanism",
+                    "driver",
+                ],
+            },
+        ),
+        Tool(
+            name="atelierb_project_check",
+            description=(
+                "Check the structural integrity of a project's IMPORTS graph, from its "
+                "main component. Catches what typecheck cannot see, because typecheck "
+                "looks at one component at a time: a machine seen but never imported, a "
+                "missing main component, a broken architectural link. Worth running "
+                "before a full proof campaign."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {"type": "string", "description": "Name of the project"},
+                    "main_component": {
+                        "type": "string",
+                        "description": "The component at the top of the IMPORTS graph",
+                    },
+                },
+                "required": ["project_name", "main_component"],
+            },
+        ),
+        Tool(
+            name="atelierb_make_all",
+            description=(
+                "Run one action over every component of a project: the one-shot way to "
+                "typecheck everything, generate every proof obligation, or prove the lot, "
+                "without naming components. The action is a bbatch command abbreviation, "
+                "t, po or pr; a number is refused."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {"type": "string", "description": "Name of the project"},
+                    "action": {
+                        "type": "string",
+                        "description": "t to typecheck, po to generate proof obligations, pr to prove",
+                    },
+                    "force": {
+                        "type": "integer",
+                        "description": "Proof force, when the action is a proof",
+                    },
+                },
+                "required": ["project_name", "action"],
+            },
+        ),
+        Tool(
+            name="atelierb_remake",
+            description=(
+                "Bring a whole project up to date, redoing whatever is stale. Answers "
+                "'already up to date' when there is nothing to do."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {"type": "string", "description": "Name of the project"},
+                    "force": {
+                        "type": "integer",
+                        "description": "Proof force to use for the proof stage",
+                    },
+                },
+                "required": ["project_name"],
+            },
+        ),
+        Tool(
+            name="atelierb_archive",
+            description=(
+                "Archive a project into a tar file, the companion of atelierb_unprove and "
+                "of any risky proof attempt: snapshot first, restore if it goes wrong. "
+                "NOT CONFIRMED on the reference installation, where every attempt answered "
+                "'Cannot Attach project' and left a zero-byte file; the cause was not "
+                "isolated."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {"type": "string", "description": "Project to archive"},
+                    "archive_path": {"type": "string", "description": "Path of the tar file to write"},
+                    "scope": {
+                        "type": "string",
+                        "description": "What to include",
+                        "enum": ["sources", "all", "sources_and_proofs"],
+                        "default": "sources_and_proofs",
+                    },
+                },
+                "required": ["project_name", "archive_path"],
+            },
+        ),
+        Tool(
+            name="atelierb_restore",
+            description=(
+                "Restore a project from a tar archive. Writes to disk, and refuses when a "
+                "project directory of that name already exists rather than writing over "
+                "it. NOT CONFIRMED, for the same reason as atelierb_archive."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "archive_path": {"type": "string", "description": "Path of the tar archive to read"},
+                    "project_name": {"type": "string", "description": "Name to give the restored project"},
+                    "project_path": {
+                        "type": "string",
+                        "description": "Where to put the project directory. Defaults to the workspace.",
+                    },
+                },
+                "required": ["archive_path", "project_name"],
+            },
+        ),
+        Tool(
+            name="atelierb_generate_rust",
+            description=(
+                "Generate Rust code for an implementation and its dependencies, the Rust "
+                "counterpart of atelierb_generate_c, with the same prerequisite that "
+                "atelierb_b0check passes first. KNOWN DEFECT in Atelier B itself: when the "
+                "installation path contains a space, which the default Program Files path "
+                "does, the translator mis-parses its own command line and fails."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {"type": "string", "description": "Name of the project"},
+                    "component_name": {
+                        "type": "string",
+                        "description": "The implementation to translate",
+                    },
+                },
+                "required": ["project_name", "component_name"],
+            },
+        ),
+        Tool(
+            name="atelierb_version",
+            description=(
+                "Report the Atelier B version, edition and resource settings. Useful as a "
+                "first diagnostic, and the only readable place for several settings: the "
+                "resources say where the external solvers and ProB are wired, and where "
+                "the project database lives."
+            ),
+            inputSchema={"type": "object", "properties": {}, "required": []},
+        ),
+        Tool(
+            name="atelierb_metrics",
+            description=(
+                "Detailed proof metrics for a whole project. Splits the results finer "
+                "than atelierb_status: separate counts for what an external mechanism "
+                "discharged and what Atelier B's own prover did, plus unreliable and "
+                "disproved verdicts. Project-wide by design; the underlying command "
+                "ignores a component name."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {"type": "string", "description": "Name of the project"},
                 },
                 "required": ["project_name"],
             },
@@ -461,12 +863,83 @@ async def call_tool(ctx, params) -> CallToolResult:
                 arguments["project_name"],
                 arguments["component_name"],
                 arguments.get("force", 0),
+                arguments.get("timeout_seconds"),
             )
         elif name == "atelierb_status":
             result = await atelierb_status(
                 arguments["project_name"],
                 arguments.get("component_name"),
             )
+        elif name == "atelierb_unproved_status":
+            result = await atelierb_unproved_status(
+                arguments["project_name"],
+                arguments.get("component_name"),
+            )
+        elif name == "atelierb_infos_component":
+            result = await atelierb_infos_component(
+                arguments["project_name"],
+                arguments["component_name"],
+            )
+        elif name == "atelierb_proof_timeout":
+            result = await atelierb_proof_timeout()
+        elif name == "atelierb_list_proof_mechanisms":
+            result = await atelierb_list_proof_mechanisms(arguments.get("project_name"))
+        elif name == "atelierb_unprove":
+            result = await atelierb_unprove(
+                arguments["project_name"],
+                arguments["component_name"],
+            )
+        elif name == "atelierb_extprove":
+            result = await atelierb_extprove(
+                arguments["project_name"],
+                arguments["component_name"],
+                arguments["mechanism"],
+                arguments.get("fast_only", False),
+            )
+        elif name == "atelierb_extreplay":
+            result = await atelierb_extreplay(
+                arguments["project_name"],
+                arguments["component_name"],
+                arguments.get("mechanism"),
+            )
+        elif name == "atelierb_counter_example":
+            result = await atelierb_counter_example(
+                arguments["project_name"],
+                arguments["component_name"],
+                arguments["po"],
+                arguments["mechanism"],
+                arguments["driver"],
+            )
+        elif name == "atelierb_project_check":
+            result = await atelierb_project_check(
+                arguments["project_name"], arguments["main_component"]
+            )
+        elif name == "atelierb_make_all":
+            result = await atelierb_make_all(
+                arguments["project_name"], arguments["action"], arguments.get("force")
+            )
+        elif name == "atelierb_remake":
+            result = await atelierb_remake(arguments["project_name"], arguments.get("force"))
+        elif name == "atelierb_archive":
+            result = await atelierb_archive(
+                arguments["project_name"],
+                arguments["archive_path"],
+                arguments.get("scope", "sources_and_proofs"),
+            )
+        elif name == "atelierb_restore":
+            result = await atelierb_restore(
+                arguments["archive_path"],
+                arguments["project_name"],
+                arguments.get("project_path"),
+            )
+        elif name == "atelierb_generate_rust":
+            result = await atelierb_generate_rust(
+                arguments["project_name"], arguments["component_name"]
+            )
+        elif name == "atelierb_version":
+            result = await atelierb_version()
+        elif name == "atelierb_metrics":
+            result = await atelierb_metrics(arguments["project_name"])
         elif name == "atelierb_list_files":
             result = await atelierb_list_files(
                 arguments.get("project_name"),

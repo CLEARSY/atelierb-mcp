@@ -1,0 +1,15 @@
+Beginning interpretation ...
+
+Printing the status of probe
+
+	probe POGenerated C:\Work\B\WK25.02\WBProof_PmiProbe\src/probe.mch
++---------------------------+------+-------+-------+------+-----+
+|                           | NbPO | NbPRi | NbPRa | NbUn | %Pr |
++---------------------------+------+-------+-------+------+-----+
+| AssertionLemmas           |    3 |     0 |     0 |    3 |   0 |
++---------------------------+------+-------+-------+------+-----+
+| probe                     |   13 |     3 |     7 |    3 |  76 |
++---------------------------+------+-------+-------+------+-----+
+
+End of Printing the status
+End of interpretation (3 lines)
