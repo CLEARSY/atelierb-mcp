@@ -42,6 +42,27 @@ class ComponentInfo:
 
 
 @dataclass
+class ProofGroup:
+    """Per-group proof counters, one row of the `s` / `us` status table.
+
+    A group is a proof-obligation family of the component, such as
+    `AssertionLemmas`, `Initialisation` or `Operation_foo`.
+    """
+
+    name: str
+    total_po: int = 0
+    proved_interactively: int = 0
+    proved_automatically: int = 0
+    unproved_po: int = 0
+    percentage: int = 0
+
+    @property
+    def proved_po(self) -> int:
+        """Proved either way."""
+        return self.proved_interactively + self.proved_automatically
+
+
+@dataclass
 class ComponentStatus:
     """Detailed status of a component."""
 
@@ -51,6 +72,9 @@ class ComponentStatus:
     total_po: int = 0
     proved_po: int = 0
     unproved_po: int = 0
+    proved_interactively: int = 0
+    proved_automatically: int = 0
+    groups: list["ProofGroup"] = field(default_factory=list)
 
     @property
     def proof_percentage(self) -> float:
@@ -142,8 +166,21 @@ def parse_components_list(output: str) -> list[ComponentInfo]:
     return components
 
 
+# One data row of the `s` / `us` status table:
+#   | AssertionLemmas           |    3 |     0 |     0 |    3 |   0 |
+# Columns are name, NbPO, NbPRi, NbPRa, NbUn, %Pr, which is how bbatch labels
+# them: proved interactively, proved automatically, unproved, percentage.
+_STATUS_ROW = re.compile(
+    r"\|\s*(\S+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|"
+)
+
+
 def parse_status(output: str) -> ComponentStatus | None:
-    """Parse the output of status (s) command.
+    """Parse the output of status (s) or unproved_status (us).
+
+    Both commands print the same table, `us` listing only the groups that still
+    have unproved proof obligations. The last row repeats the component name and
+    carries the totals; the rows above it are the per-group counters.
 
     Args:
         output: Raw bbatch output.
@@ -151,27 +188,42 @@ def parse_status(output: str) -> ComponentStatus | None:
     Returns:
         ComponentStatus object or None if parsing fails.
     """
-    status = ComponentStatus(name="")
+    name_match = re.search(
+        r"Printing the status of\s+(\S+)", output, re.IGNORECASE
+    )
+    if not name_match:
+        return None
+    name = name_match.group(1)
 
-    # Look for component name
-    name_match = re.search(r"Status of component\s+(\w+)", output, re.IGNORECASE)
-    if name_match:
-        status.name = name_match.group(1)
+    status = ComponentStatus(name=name)
 
-    # Look for typecheck status
-    if re.search(r"typecheck.*ok|tc.*ok|checked", output, re.IGNORECASE):
+    # "probe POGenerated C:\...\probe.mch" states what has been done so far.
+    if re.search(rf"^\s*{re.escape(name)}\s+POGenerated", output, re.IGNORECASE | re.MULTILINE):
+        status.po_generated = True
+        status.typecheck_ok = True  # POG only runs on a typechecked component
+    elif re.search(rf"^\s*{re.escape(name)}\s+TypeChecked", output, re.IGNORECASE | re.MULTILINE):
         status.typecheck_ok = True
 
-    # Look for PO counts
-    # Common patterns: "X / Y proved", "X proved out of Y", etc.
-    po_match = re.search(r"(\d+)\s*/\s*(\d+)", output)
-    if po_match:
-        status.proved_po = int(po_match.group(1))
-        status.total_po = int(po_match.group(2))
-        status.unproved_po = status.total_po - status.proved_po
-        status.po_generated = True
+    for row in _STATUS_ROW.finditer(output):
+        group = ProofGroup(
+            name=row.group(1),
+            total_po=int(row.group(2)),
+            proved_interactively=int(row.group(3)),
+            proved_automatically=int(row.group(4)),
+            unproved_po=int(row.group(5)),
+            percentage=int(row.group(6)),
+        )
+        if group.name == name:
+            # The component's own row is the total, not a group.
+            status.total_po = group.total_po
+            status.proved_interactively = group.proved_interactively
+            status.proved_automatically = group.proved_automatically
+            status.unproved_po = group.unproved_po
+            status.proved_po = group.proved_po
+        else:
+            status.groups.append(group)
 
-    return status if status.name else None
+    return status
 
 
 def parse_global_status(output: str) -> list[ComponentStatus]:
@@ -216,6 +268,48 @@ def parse_global_status(output: str) -> list[ComponentStatus]:
         statuses.append(status)
 
     return statuses
+
+
+def parse_component_info(output: str) -> dict | None:
+    """Parse the output of infos_component (ic).
+
+    The command prints one `KEY --> value` pair per line::
+
+        SPECIFICATION  --> probe
+        LOCATION       --> C:\\Work\\B\\WK25.02\\WBProof_PmiProbe\\src/probe.mch
+        OWNER          --> tl
+
+    Keys vary with the component: a refinement or implementation adds its own
+    lines, so the parser keeps whatever it finds rather than expecting a fixed
+    set. Keys are lowercased so callers get stable field names.
+
+    Args:
+        output: Raw bbatch output.
+
+    Returns:
+        Dictionary of the pairs found, or None if the output has none.
+    """
+    info = {}
+    for key, value in re.findall(r"^\s*([A-Z][A-Z_ ]*?)\s*-->\s*(.+?)\s*$", output, re.MULTILINE):
+        info[key.strip().lower().replace(" ", "_")] = value.strip()
+
+    return info or None
+
+
+def parse_timeout(output: str) -> int | None:
+    """Parse the output of timeout (to).
+
+    Reads `Proof Timeout Value is 0 (no timeout)`, where the value is in
+    seconds and 0 means no limit.
+
+    Args:
+        output: Raw bbatch output.
+
+    Returns:
+        The timeout in seconds, or None if the line is absent.
+    """
+    match = re.search(r"Proof\s+Timeout\s+Value\s+is\s+(\d+)", output, re.IGNORECASE)
+    return int(match.group(1)) if match else None
 
 
 def parse_project_info(output: str) -> ProjectInfo | None:

@@ -176,15 +176,45 @@ class BbatchWrapper:
         option = "1" if differential else "0"
         return await self.execute_with_project(project, f"po {component} {option}")
 
-    async def prove(self, project: str, component: str, force: int = 0) -> BbatchResult:
+    async def prove(
+        self,
+        project: str,
+        component: str,
+        force: int = 0,
+        timeout: int | None = None,
+    ) -> BbatchResult:
         """Run automatic prover on a component.
 
         Args:
             project: Project name.
             component: Component name.
             force: Proof force level (0-3 auto, 10-13 forced, -1 fast, -2 replay).
+            timeout: Per-proof-obligation timeout in seconds, 0 for no limit.
+                Issued as `to` in the same session, just before `pr`: the setting
+                is session-scoped, so it has to travel with the proof itself.
         """
-        return await self.execute_with_project(project, f"pr {component} {force}")
+        commands = [] if timeout is None else [f"to {timeout}"]
+        commands.append(f"pr {component} {force}")
+        return await self.execute_with_project(project, commands)
+
+    async def unproved_status(self, project: str, component: str) -> BbatchResult:
+        """Status of a component, listing only the groups with unproved POs."""
+        return await self.execute_with_project(project, f"us {component}")
+
+    async def unproved_global(self, project: str) -> BbatchResult:
+        """Status of every component of the project that still has unproved POs."""
+        return await self.execute_with_project(project, "ug")
+
+    async def proof_timeout(self) -> BbatchResult:
+        """Read the configured proof timeout (0 = no limit).
+
+        General command, no open project needed. Read-only on purpose: `to N`
+        only holds for the bbatch session that issues it, and this wrapper
+        starts a fresh session per call, so a standalone setter would report
+        success and change nothing. Pass `timeout` to `prove()` instead, which
+        sets it in the same session as the proof.
+        """
+        return await self.execute("to")
 
     async def status(self, project: str, component: str) -> BbatchResult:
         """Get status of a component."""

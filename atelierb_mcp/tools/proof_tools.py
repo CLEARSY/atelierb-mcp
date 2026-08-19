@@ -19,7 +19,38 @@
 """Proof-related MCP tools for Atelier B."""
 
 from ..bbatch_wrapper import bbatch
-from ..parsers import extract_error_message, parse_global_status, parse_status
+from ..parsers import (
+    extract_error_message,
+    parse_component_info,
+    parse_global_status,
+    parse_status,
+    parse_timeout,
+)
+
+
+def _status_payload(status) -> dict:
+    """Shared shape for the status dictionaries, groups included."""
+    return {
+        "typecheck_ok": status.typecheck_ok,
+        "po_generated": status.po_generated,
+        "total_po": status.total_po,
+        "proved_po": status.proved_po,
+        "unproved_po": status.unproved_po,
+        "proved_interactively": status.proved_interactively,
+        "proved_automatically": status.proved_automatically,
+        "proof_percentage": status.proof_percentage,
+        "groups": [
+            {
+                "name": g.name,
+                "total_po": g.total_po,
+                "proved_po": g.proved_po,
+                "unproved_po": g.unproved_po,
+                "proved_interactively": g.proved_interactively,
+                "proved_automatically": g.proved_automatically,
+            }
+            for g in status.groups
+        ],
+    }
 
 
 async def atelierb_typecheck(project_name: str, component_name: str) -> dict:
@@ -129,7 +160,10 @@ async def atelierb_pogenerate(
 
 
 async def atelierb_prove(
-    project_name: str, component_name: str, force: int = 0
+    project_name: str,
+    component_name: str,
+    force: int = 0,
+    timeout_seconds: int | None = None,
 ) -> dict:
     """Run automatic prover on a B component.
 
@@ -141,11 +175,21 @@ async def atelierb_prove(
             - 10, 11, 12, 13: Same as 0-3 but forced
             - -1: Fast
             - -2: Replay
+        timeout_seconds: Per-proof-obligation time limit, 0 for none. Omit to
+            keep the configured default, which `atelierb_proof_timeout` reports.
+            The setting is session-scoped in bbatch, so it is issued here rather
+            than through a separate call, which would have no effect.
 
     Returns:
         Dictionary with proof result and 'success' status.
     """
-    result = await bbatch.prove(project_name, component_name, force)
+    if timeout_seconds is not None and timeout_seconds < 0:
+        return {
+            "success": False,
+            "error": f"Timeout must be zero or positive, got {timeout_seconds}",
+        }
+
+    result = await bbatch.prove(project_name, component_name, force, timeout_seconds)
 
     if not result.success:
         error = extract_error_message(result.output) or result.error
@@ -163,6 +207,7 @@ async def atelierb_prove(
         "project": project_name,
         "component": component_name,
         "force": force,
+        "timeout_seconds": timeout_seconds,
         "raw_output": result.output,
     }
 
@@ -195,14 +240,7 @@ async def atelierb_status(project_name: str, component_name: str | None = None) 
             "success": True,
             "project": project_name,
             "component": component_name,
-            "status": {
-                "typecheck_ok": status.typecheck_ok if status else None,
-                "po_generated": status.po_generated if status else None,
-                "total_po": status.total_po if status else 0,
-                "proved_po": status.proved_po if status else 0,
-                "unproved_po": status.unproved_po if status else 0,
-                "proof_percentage": status.proof_percentage if status else None,
-            } if status else None,
+            "status": _status_payload(status) if status else None,
             "raw_output": result.output,
         }
     else:
@@ -239,3 +277,144 @@ async def atelierb_status(project_name: str, component_name: str | None = None) 
             },
             "raw_output": result.output,
         }
+
+
+async def atelierb_unproved_status(
+    project_name: str, component_name: str | None = None
+) -> dict:
+    """Report what is left to prove, filtering out everything already proved.
+
+    Wraps `us` for a single component and `ug` for the whole project. It answers
+    "what is left to prove?" directly, where `atelierb_status` returns
+    everything and leaves the filtering to the caller.
+
+    Args:
+        project_name: Name of the project.
+        component_name: Name of the component. When omitted, every component of
+            the project that still has unproved proof obligations is reported.
+
+    Returns:
+        Dictionary with the unproved breakdown and 'success' status.
+    """
+    if component_name:
+        result = await bbatch.unproved_status(project_name, component_name)
+
+        if not result.success:
+            error = extract_error_message(result.output) or result.error
+            return {
+                "success": False,
+                "error": error or f"Failed to get unproved status for '{component_name}'",
+                "project": project_name,
+                "component": component_name,
+                "raw_output": result.output,
+            }
+
+        status = parse_status(result.output)
+        return {
+            "success": True,
+            "project": project_name,
+            "component": component_name,
+            # Only the groups that still carry unproved POs are listed by `us`.
+            "unproved": _status_payload(status) if status else None,
+            "raw_output": result.output,
+        }
+
+    result = await bbatch.unproved_global(project_name)
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"Failed to get unproved status for '{project_name}'",
+            "project": project_name,
+            "raw_output": result.output,
+        }
+
+    statuses = parse_global_status(result.output)
+    unproved = [s for s in statuses if s.unproved_po > 0]
+    return {
+        "success": True,
+        "project": project_name,
+        "components": [
+            {
+                "name": s.name,
+                "total_po": s.total_po,
+                "proved_po": s.proved_po,
+                "unproved_po": s.unproved_po,
+                "proof_percentage": s.proof_percentage,
+            }
+            for s in unproved
+        ],
+        "summary": {
+            "components_with_unproved": len(unproved),
+            "total_unproved": sum(s.unproved_po for s in unproved),
+        },
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_infos_component(project_name: str, component_name: str) -> dict:
+    """Get the metadata of a component: kind, source location, owner.
+
+    Complements `atelierb_status`, which reports proof progress but not where
+    the component lives or what it is.
+
+    Args:
+        project_name: Name of the project.
+        component_name: Name of the component.
+
+    Returns:
+        Dictionary with the component metadata and 'success' status.
+    """
+    result = await bbatch.infos_component(project_name, component_name)
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or f"Failed to get information for '{component_name}'",
+            "project": project_name,
+            "component": component_name,
+            "raw_output": result.output,
+        }
+
+    info = parse_component_info(result.output)
+    return {
+        "success": True,
+        "project": project_name,
+        "component": component_name,
+        "info": info,
+        "raw_output": result.output,
+    }
+
+
+async def atelierb_proof_timeout() -> dict:
+    """Read the configured timeout of the automatic prover, in seconds.
+
+    Read-only by design. `to N` only holds for the bbatch session that issues
+    it, and the server starts a fresh session for every command, so a setter
+    exposed here would report success and change nothing at all. To actually
+    bound a proof, pass `timeout_seconds` to `atelierb_prove`, which issues the
+    setting in the same session as the proof.
+
+    Returns:
+        Dictionary with the timeout value and 'success' status. 0 means the
+        prover runs without any time limit.
+    """
+    result = await bbatch.proof_timeout()
+
+    if not result.success:
+        error = extract_error_message(result.output) or result.error
+        return {
+            "success": False,
+            "error": error or "Failed to read the proof timeout",
+            "raw_output": result.output,
+        }
+
+    value = parse_timeout(result.output)
+    return {
+        "success": True,
+        "timeout_seconds": value,
+        "no_timeout": value == 0,
+        "raw_output": result.output,
+    }

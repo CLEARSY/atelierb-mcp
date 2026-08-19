@@ -26,11 +26,13 @@ import pytest
 from atelierb_mcp.parsers import (
     extract_error_message,
     label_pmi_entries,
+    parse_component_info,
     parse_components_list,
     parse_global_status,
     parse_po_labels,
     parse_projects_list,
     parse_status,
+    parse_timeout,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -116,18 +118,89 @@ class TestParseGlobalStatus:
 
 
 class TestParseStatus:
-    """Tests for parse_status function."""
+    """Tests for parse_status, against output captured from bbatch itself.
 
-    def test_parse_status(self, sample_status_output):
-        """Test parsing component status output."""
-        status = parse_status(sample_status_output)
+    The fixtures here are verbatim `bbatch` output, not hand-written samples.
+    An invented sample is what let this parser return None on every real
+    component for months while its test stayed green: it was written against a
+    format ("Status of component X", "Proof obligations : 5 / 10") that bbatch
+    never prints.
+    """
+
+    def test_parse_status(self):
+        """The `s` table: totals on the component row, groups above it."""
+        status = parse_status(read_fixture("status_probe.txt"))
 
         assert status is not None
-        assert status.name == "Machine1"
+        assert status.name == "probe"
         assert status.typecheck_ok is True
-        assert status.proved_po == 5
-        assert status.total_po == 10
-        assert status.proof_percentage == 50.0
+        assert status.po_generated is True
+
+        # Cross-checked against bbatch: NbPO 13, NbPRi 3, NbPRa 7, NbUn 3.
+        assert status.total_po == 13
+        assert status.proved_interactively == 3
+        assert status.proved_automatically == 7
+        assert status.proved_po == 10
+        assert status.unproved_po == 3
+
+        # The component's own row is the total, so it is not listed as a group.
+        assert [g.name for g in status.groups] == [
+            "AssertionLemmas",
+            "Initialisation",
+            "Operation_bump",
+            "WellDefinednessAssertions",
+        ]
+        assert sum(g.total_po for g in status.groups) == status.total_po
+
+        lemmas = next(g for g in status.groups if g.name == "AssertionLemmas")
+        assert lemmas.total_po == 3
+        assert lemmas.unproved_po == 3
+        assert lemmas.proved_po == 0
+
+    def test_parse_unproved_status_keeps_only_unproved_groups(self):
+        """`us` prints the same table, filtered to what is left to prove."""
+        status = parse_status(read_fixture("unproved_status_probe.txt"))
+
+        assert status is not None
+        assert status.name == "probe"
+        assert status.total_po == 13
+        assert status.unproved_po == 3
+        # Of the four groups, only the one with unproved POs is reported.
+        assert [g.name for g in status.groups] == ["AssertionLemmas"]
+
+    def test_parse_status_returns_none_on_unrelated_output(self):
+        """No status header means no status, rather than an empty shell."""
+        assert parse_status("Beginning interpretation ...\nEnd of interpretation") is None
+
+
+class TestParseComponentInfo:
+    """Tests for parse_component_info (the `ic` command)."""
+
+    def test_parse_component_info(self):
+        info = parse_component_info(read_fixture("infos_component_probe.txt"))
+
+        assert info == {
+            "specification": "probe",
+            "location": "C:\\Work\\B\\WK25.02\\WBProof_PmiProbe\\src/probe.mch",
+            "owner": "tl",
+        }
+
+    def test_parse_component_info_without_pairs(self):
+        assert parse_component_info("Beginning interpretation ...") is None
+
+
+class TestParseTimeout:
+    """Tests for parse_timeout (the `to` command)."""
+
+    def test_parse_timeout_reads_no_limit(self):
+        """0 is the shipped default and means no limit at all."""
+        assert parse_timeout(read_fixture("timeout.txt")) == 0
+
+    def test_parse_timeout_reads_a_value(self):
+        assert parse_timeout("Proof Timeout Value is 45 seconds") == 45
+
+    def test_parse_timeout_absent(self):
+        assert parse_timeout("Beginning interpretation ...") is None
 
 
 class TestExtractErrorMessage:

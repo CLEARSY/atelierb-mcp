@@ -9,6 +9,10 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that c
 
 This server enables Claude to directly interact with Atelier B projects: typechecking components, generating proof obligations, running the automatic prover, generating C code, and managing project files.
 
+> **Works with Atelier B Community Edition 24.04.2** (`ATELIER B (Community Edition) version 24.04.2`, B Compiler `version/24.08`), which is the version every tool is developed and tested against. Other 24.x releases are expected to work, since the server drives `bbatch` through its documented command names, but they are not tested. Commands available only in the Professional edition, `vr` (`verify_rule`) among them, are deliberately not exposed; see [docs/coverage.md](docs/coverage.md).
+>
+> Also requires **Python 3.11+** and **mcp 2.0+**.
+
 ## Architecture
 
 ```
@@ -31,14 +35,14 @@ The server wraps Atelier B's `bbatch` command-line interface, translating MCP to
 | Category | Tools |
 |----------|-------|
 | **Project Management** | `atelierb_list_projects`, `atelierb_infos_project`, `atelierb_list_components`, `atelierb_create_project`, `atelierb_remove_project`, `atelierb_add_component`, `atelierb_remove_component` |
-| **Verification** | `atelierb_typecheck`, `atelierb_b0check`, `atelierb_pogenerate`, `atelierb_prove`, `atelierb_status` |
+| **Verification** | `atelierb_typecheck`, `atelierb_b0check`, `atelierb_pogenerate`, `atelierb_prove`, `atelierb_status`, `atelierb_unproved_status`, `atelierb_infos_component`, `atelierb_proof_timeout` |
 | **Code Generation** | `atelierb_generate_c`, `atelierb_generate_project_c` |
 | **File Operations** | `atelierb_list_files`, `atelierb_read_file`, `atelierb_write_file`, `atelierb_list_project_structure` |
 
 ## Prerequisites
 
 - **Python 3.11+**
-- **Atelier B** (Community Edition or Professional) with `bbatch.exe`
+- **Atelier B Community Edition 24.04.2** with `bbatch.exe` (the tested version; see the note at the top)
 - **Claude Desktop** (or any MCP-compatible client)
 
 ## Installation

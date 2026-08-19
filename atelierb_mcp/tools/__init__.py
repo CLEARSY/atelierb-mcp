@@ -37,10 +37,13 @@ from .project_tools import (
 )
 from .proof_tools import (
     atelierb_b0check,
+    atelierb_infos_component,
     atelierb_pogenerate,
+    atelierb_proof_timeout,
     atelierb_prove,
     atelierb_status,
     atelierb_typecheck,
+    atelierb_unproved_status,
 )
 
 __all__ = [
@@ -59,6 +62,9 @@ __all__ = [
     "atelierb_pogenerate",
     "atelierb_prove",
     "atelierb_status",
+    "atelierb_unproved_status",
+    "atelierb_infos_component",
+    "atelierb_proof_timeout",
     # Code generation tools
     "atelierb_generate_c",
     "atelierb_generate_project_c",

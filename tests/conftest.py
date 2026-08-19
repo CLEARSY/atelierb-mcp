@@ -18,6 +18,8 @@
 
 """Pytest configuration and fixtures."""
 
+from pathlib import Path
+
 import pytest
 
 from atelierb_mcp.bbatch_wrapper import BbatchResult, BbatchWrapper
@@ -66,17 +68,16 @@ End of interpretation (1 lines)"""
 
 @pytest.fixture
 def sample_status_output():
-    """Sample output from status command."""
-    return """Beginning interpretation ...
+    """Output of the status command, captured verbatim from bbatch.
 
-Status of component Machine1
-
-typecheck : ok
-pogenerate : ok
-
-Proof obligations : 5 / 10
-
-End of interpretation (1 lines)"""
+    This used to be hand-written, inventing lines ("Status of component X",
+    "Proof obligations : 5 / 10") that bbatch never prints. The parser was
+    written against that invention and returned None on every real component,
+    with its test staying green throughout. Read the real thing instead.
+    """
+    return (Path(__file__).parent / "fixtures" / "status_probe.txt").read_text(
+        encoding="utf-8", errors="replace"
+    )
 
 
 @pytest.fixture

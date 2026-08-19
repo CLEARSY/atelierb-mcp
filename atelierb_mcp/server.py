@@ -32,18 +32,21 @@ from .tools import (
     atelierb_create_project,
     atelierb_generate_c,
     atelierb_generate_project_c,
+    atelierb_infos_component,
     atelierb_infos_project,
     atelierb_list_components,
     atelierb_list_files,
     atelierb_list_project_structure,
     atelierb_list_projects,
     atelierb_pogenerate,
+    atelierb_proof_timeout,
     atelierb_prove,
     atelierb_read_file,
     atelierb_remove_component,
     atelierb_remove_project,
     atelierb_status,
     atelierb_typecheck,
+    atelierb_unproved_status,
     atelierb_write_file,
 )
 
@@ -169,6 +172,15 @@ async def list_tools(ctx, params) -> ListToolsResult:
                         "description": "Proof force level (0-3 auto, 10-13 forced, -1 fast, -2 replay)",
                         "default": 0,
                     },
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "description": (
+                            "Per-proof-obligation time limit in seconds, 0 for none. "
+                            "Omit to keep the configured default. Raise it on a hard "
+                            "proof obligation, lower it to keep a broad sweep fast."
+                        ),
+                        "minimum": 0,
+                    },
                 },
                 "required": ["project_name", "component_name"],
             },
@@ -189,6 +201,68 @@ async def list_tools(ctx, params) -> ListToolsResult:
                     },
                 },
                 "required": ["project_name"],
+            },
+        ),
+        Tool(
+            name="atelierb_unproved_status",
+            description=(
+                "Report what is left to prove, hiding everything already proved. "
+                "With a component, lists the proof-obligation groups that still have "
+                "unproved POs; without one, lists every component of the project that "
+                "still has unproved POs. Use this rather than atelierb_status when the "
+                "question is 'what remains?'."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {
+                        "type": "string",
+                        "description": "Name of the project",
+                    },
+                    "component_name": {
+                        "type": "string",
+                        "description": (
+                            "Name of the component (optional, omit to scan the whole project)"
+                        ),
+                    },
+                },
+                "required": ["project_name"],
+            },
+        ),
+        Tool(
+            name="atelierb_infos_component",
+            description=(
+                "Get the metadata of a component: its kind, the path of its source "
+                "file, and its owner. Complements atelierb_status, which reports proof "
+                "progress but not where the component lives."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {
+                        "type": "string",
+                        "description": "Name of the project",
+                    },
+                    "component_name": {
+                        "type": "string",
+                        "description": "Name of the component",
+                    },
+                },
+                "required": ["project_name", "component_name"],
+            },
+        ),
+        Tool(
+            name="atelierb_proof_timeout",
+            description=(
+                "Read the configured timeout of the automatic prover, in seconds, "
+                "0 meaning no limit. Read-only: the timeout is scoped to a single "
+                "bbatch session, so to actually bound a proof pass timeout_seconds to "
+                "atelierb_prove instead."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": [],
             },
         ),
         Tool(
@@ -461,12 +535,25 @@ async def call_tool(ctx, params) -> CallToolResult:
                 arguments["project_name"],
                 arguments["component_name"],
                 arguments.get("force", 0),
+                arguments.get("timeout_seconds"),
             )
         elif name == "atelierb_status":
             result = await atelierb_status(
                 arguments["project_name"],
                 arguments.get("component_name"),
             )
+        elif name == "atelierb_unproved_status":
+            result = await atelierb_unproved_status(
+                arguments["project_name"],
+                arguments.get("component_name"),
+            )
+        elif name == "atelierb_infos_component":
+            result = await atelierb_infos_component(
+                arguments["project_name"],
+                arguments["component_name"],
+            )
+        elif name == "atelierb_proof_timeout":
+            result = await atelierb_proof_timeout()
         elif name == "atelierb_list_files":
             result = await atelierb_list_files(
                 arguments.get("project_name"),
